@@ -24,7 +24,12 @@ export default function AuthCallback() {
       const response = await fetch(new URL('/auth/v1/oauth/token', supabaseUrl), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: clientId, redirect_uri: callbackUrl }) })
       const tokens = await response.json()
       if (!response.ok || !tokens.access_token || !tokens.refresh_token) throw new Error(tokens.error_description || 'Token kunne ikke hentes.')
-      const client = createClient(supabaseUrl, supabaseKey)
+      const client = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          storageKey: 'vedoy-canvas-auth-v2',
+          detectSessionInUrl: false,
+        },
+      })
       const { error } = await client.auth.setSession({ access_token: tokens.access_token, refresh_token: tokens.refresh_token })
       if (error) throw error
       sessionStorage.removeItem('vedoy_login_verifier')

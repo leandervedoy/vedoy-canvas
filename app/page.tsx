@@ -1,11 +1,11 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
-import { ChevronDown, ChevronRight, Download, FilePlus2, FolderPlus, LogIn, LogOut, Menu, Moon, NotebookTabs, StickyNote, Sun } from 'lucide-react'
+import { ArrowRight, BookOpen, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Trash2, Type, Undo2 } from 'lucide-react'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
   ssr: false,
@@ -18,12 +18,50 @@ const clientId = process.env.NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID
 const callbackUrl = 'https://vedoy-canvas.vercel.app/auth/callback'
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey, {
   auth: {
-    storageKey: 'vedoy-canvas-auth-v1',
+    storageKey: 'vedoy-canvas-auth-v2',
     detectSessionInUrl: false,
   },
 }) : null
 
-type Note = { id: string; title: string; children?: Note[] }
+type Note = { id: string; title: string; kind?: 'folder' | 'file'; favorite?: boolean; snapshot?: CanvasSnapshot; children?: Note[] }
+type DrawingTool = 'selection' | 'hand' | 'rectangle' | 'diamond' | 'ellipse' | 'arrow' | 'line' | 'freedraw' | 'text' | 'image' | 'eraser' | 'frame' | 'embeddable' | 'laser'
+
+const drawingTools: Array<{ type: DrawingTool; label: string; icon: typeof MousePointer2 }> = [
+  { type: 'selection', label: 'Velg', icon: MousePointer2 },
+  { type: 'hand', label: 'Flytt', icon: Hand },
+  { type: 'rectangle', label: 'Rektangel', icon: Square },
+  { type: 'diamond', label: 'Diamant', icon: Diamond },
+  { type: 'ellipse', label: 'Sirkel', icon: Circle },
+  { type: 'arrow', label: 'Pil', icon: ArrowRight },
+  { type: 'line', label: 'Linje', icon: Minus },
+  { type: 'freedraw', label: 'Tegn', icon: Pencil },
+  { type: 'text', label: 'Tekst', icon: Type },
+  { type: 'image', label: 'Bilde', icon: ImageIcon },
+  { type: 'eraser', label: 'Viskelær', icon: Eraser },
+  { type: 'frame', label: 'Ramme', icon: Frame },
+  { type: 'embeddable', label: 'Innhold', icon: ExternalLink },
+  { type: 'laser', label: 'Laser', icon: Presentation },
+]
+
+type ExportFormat = 'svg' | 'png' | 'clipboard'
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 500)
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
 
 function isCanvasSnapshot(value: unknown): value is CanvasSnapshot {
   if (!value || typeof value !== 'object') return false
@@ -32,23 +70,26 @@ function isCanvasSnapshot(value: unknown): value is CanvasSnapshot {
 }
 
 const initialNotes: Note[] = [
-  { id: 'canvas', title: 'Canvas ideas', children: [{ id: 'research', title: 'Research' }, { id: 'directions', title: 'Directions' }] },
-  { id: 'launch', title: 'Product launch', children: [{ id: 'timeline', title: 'Timeline' }] },
-  { id: 'inbox', title: 'Untitled note' },
+  { id: 'canvas', title: 'Canvas ideas', kind: 'folder', children: [{ id: 'research', title: 'Research', kind: 'file' }, { id: 'directions', title: 'Directions', kind: 'file' }] },
+  { id: 'launch', title: 'Product launch', kind: 'folder', children: [{ id: 'timeline', title: 'Timeline', kind: 'file' }] },
+  { id: 'inbox', title: 'Untitled note', kind: 'file' },
 ]
 
-function NoteTree({ notes, activeNote, expanded, onSelect, onToggle }: { notes: Note[]; activeNote: string; expanded: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void }) {
+function NoteTree({ notes, activeNote, expanded, onSelect, onToggle, onRename, onFavorite, onDelete, onDrop }: { notes: Note[]; activeNote: string; expanded: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void; onRename: (id: string) => void; onFavorite: (id: string) => void; onDelete: (id: string) => void; onDrop: (targetId: string, draggedId: string) => void }) {
   return <div className="flex flex-col gap-0.5">{notes.map((note) => {
     const hasChildren = Boolean(note.children?.length)
     const isExpanded = expanded.includes(note.id)
     return <div key={note.id}>
-      <div className={`flex items-center gap-1 rounded-lg pr-2 transition-colors ${activeNote === note.id ? 'bg-muted' : 'hover:bg-muted/70'}`}>
+      <div draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', note.id) }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const draggedId = event.dataTransfer.getData('text/plain'); if (draggedId && draggedId !== note.id) onDrop(note.id, draggedId) }} className={`group flex items-center gap-1 rounded-lg pr-1 transition-colors ${activeNote === note.id ? 'bg-muted' : 'hover:bg-muted/70'}`}>
         <button onClick={() => hasChildren && onToggle(note.id)} className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground" aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${note.title}`} disabled={!hasChildren}>
           {hasChildren ? (isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />) : <span className="size-3.5" />}
         </button>
         <button onClick={() => onSelect(note.id)} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left text-xs font-medium"><StickyNote className="size-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{note.title}</span></button>
+        <button onClick={() => onFavorite(note.id)} className={`flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-background ${note.favorite ? 'text-yellow-500' : 'text-muted-foreground opacity-0 group-hover:opacity-100'}`} aria-label={note.favorite ? `Fjern ${note.title} fra favoritter` : `Merk ${note.title} som favoritt`}><Star className="size-3" fill={note.favorite ? 'currentColor' : 'none'} /></button>
+        <button onClick={() => onRename(note.id)} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`Rediger navnet på ${note.title}`} title="Rediger navn"><Pencil className="size-3" /></button>
+        <button onClick={() => onDelete(note.id)} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600" aria-label={`Slett ${note.title}`} title="Slett"><Trash2 className="size-3" /></button>
       </div>
-      {hasChildren && isExpanded && <div className="ml-4 border-l border-border/70 pl-2"><NoteTree notes={note.children ?? []} activeNote={activeNote} expanded={expanded} onSelect={onSelect} onToggle={onToggle} /></div>}
+      {hasChildren && isExpanded && <div className="ml-4 border-l border-border/70 pl-2"><NoteTree notes={note.children ?? []} activeNote={activeNote} expanded={expanded} onSelect={onSelect} onToggle={onToggle} onRename={onRename} onFavorite={onFavorite} onDelete={onDelete} onDrop={onDrop} /></div>}
     </div>
   })}</div>
 }
@@ -77,30 +118,128 @@ export default function Page() {
   const [syncState, setSyncState] = useState<'waiting' | 'loading' | 'saved' | 'error'>('waiting')
   const [initialSnapshot, setInitialSnapshot] = useState<CanvasSnapshot | null | undefined>(undefined)
   const [notebookOpen, setNotebookOpen] = useState(false)
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false)
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const [libraryItems, setLibraryItems] = useState<readonly unknown[]>([])
+  const [activeTool, setActiveTool] = useState<DrawingTool>('selection')
   const [notes, setNotes] = useState(initialNotes)
   const [activeNote, setActiveNote] = useState('canvas')
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [draftNoteTitle, setDraftNoteTitle] = useState('')
+  const [nameDialog, setNameDialog] = useState<{ id: string; kind: 'bok' | 'side' } | null>(null)
   const [expanded, setExpanded] = useState(['canvas', 'launch'])
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editorApi = useRef<ExcalidrawImperativeAPI | null>(null)
+  const sceneInput = useRef<HTMLInputElement | null>(null)
+  const libraryInput = useRef<HTMLInputElement | null>(null)
 
-  const currentNote = useMemo(() => {
-    const find = (items: Note[]): Note | undefined => {
-      for (const item of items) {
-        if (item.id === activeNote) return item
-        const found = item.children && find(item.children)
-        if (found) return found
-      }
-    }
-    return find(notes)
-  }, [activeNote, notes])
+  const notify = (message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(null), 2600)
+  }
 
-  const addNote = () => {
-    const id = `note-${Date.now()}`
-    setNotes((current) => [...current, { id, title: 'New sub note' }])
+  const updateNoteTree = (items: Note[], id: string, updater: (note: Note) => Note): Note[] => items.map((note) => note.id === id ? updater(note) : { ...note, children: note.children ? updateNoteTree(note.children, id, updater) : note.children })
+
+  const beginRename = (id: string) => {
+    const find = (items: Note[]): Note | undefined => items.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.id === id)
+    const note = find(notes)
+    if (note) { setEditingNoteId(id); setDraftNoteTitle(note.title); setNameDialog({ id, kind: note.children ? 'bok' : 'side' }); setActiveNote(id) }
+  }
+
+  const findNote = (items: Note[], id: string): Note | undefined => items.reduce<Note | undefined>((found, item) => found ?? (item.id === id ? item : findNote(item.children ?? [], id)), undefined)
+
+  const openNote = async (id: string) => {
+    if (id === activeNote) return
+    const api = editorApi.current
+    const target = findNote(notes, id)
+    if (!api || !target) { setActiveNote(id); return }
+    const { serializeAsJSON } = await import('@excalidraw/excalidraw')
+    const currentSnapshot = JSON.parse(serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'database')) as CanvasSnapshot
+    setNotes((current) => updateNoteTree(current, activeNote, (note) => ({ ...note, snapshot: currentSnapshot })))
+    if (target.snapshot) api.updateScene({ elements: target.snapshot.elements, appState: { ...api.getAppState(), ...target.snapshot.appState } })
+    else api.resetScene()
     setActiveNote(id)
   }
 
+  const saveNoteTitle = () => {
+    const title = draftNoteTitle.trim()
+    if (!editingNoteId || !title) return
+    setNotes((current) => updateNoteTree(current, editingNoteId, (note) => ({ ...note, title })))
+    setEditingNoteId(null)
+    setNameDialog(null)
+  }
+
+  const addBook = () => {
+    const id = `book-${Date.now()}`
+    setNotes((current) => [...current, { id, title: 'Ny bok', kind: 'folder', children: [] }])
+    setActiveNote(id); setEditingNoteId(id); setDraftNoteTitle('Ny bok'); setNameDialog({ id, kind: 'bok' }); setAddMenuOpen(false)
+  }
+
+  const addPage = (parentId?: string) => {
+    const id = `note-${Date.now()}`
+    const newNote = { id, title: 'Ny side', kind: 'file' as const }
+    if (!parentId) setNotes((current) => [...current, newNote])
+    else {
+      const append = (items: Note[]): Note[] => items.map((note) => note.id === parentId ? { ...note, children: [...(note.children ?? []), newNote] } : { ...note, children: note.children ? append(note.children) : note.children })
+      setNotes(append)
+      setExpanded((current) => current.includes(parentId) ? current : [...current, parentId])
+    }
+    setActiveNote(id); setEditingNoteId(id); setDraftNoteTitle('Ny side'); setNameDialog({ id, kind: 'side' }); setAddMenuOpen(false)
+  }
+
+  const addSubpage = () => {
+    addPage(activeNote)
+  }
+
+  const addFolder = (parentId?: string) => {
+    const id = `folder-${Date.now()}`
+    const newFolder: Note = { id, title: 'Ny undermappe', kind: 'folder', children: [] }
+    if (!parentId) setNotes((current) => [...current, newFolder])
+    else setNotes((current) => updateNoteTree(current, parentId, (note) => ({ ...note, children: [...(note.children ?? []), newFolder] })))
+    if (parentId) setExpanded((current) => current.includes(parentId) ? current : [...current, parentId])
+    setActiveNote(id); setEditingNoteId(id); setDraftNoteTitle('Ny undermappe'); setNameDialog({ id, kind: 'bok' }); setAddMenuOpen(false)
+  }
+
+  const addSubfolder = () => addFolder(activeNote)
+
+  const toggleFavorite = (id: string) => setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, favorite: !note.favorite })))
+
+  const deleteNote = (id: string) => {
+    const find = (items: Note[]): Note | undefined => items.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.id === id)
+    const note = find(notes)
+    if (!note || !window.confirm(`Slette ${note.title}?`)) return
+    const remove = (items: Note[]): Note[] => items.filter((item) => item.id !== id).map((item) => ({ ...item, children: item.children ? remove(item.children) : item.children }))
+    setNotes(remove)
+    if (activeNote === id) setActiveNote('canvas')
+  }
+
+  const moveNote = (targetId: string, draggedId: string) => {
+    const contains = (items: Note[], parentId: string, childId: string): boolean => items.some((item) => item.id === parentId && (item.children ?? []).some((child) => child.id === childId || contains([child], child.id, childId)))
+    if (contains(notes, draggedId, targetId)) return
+    let dragged: Note | undefined
+    const withoutDragged = (items: Note[]): Note[] => items.filter((item) => { if (item.id === draggedId) { dragged = item; return false }; return true }).map((item) => ({ ...item, children: item.children ? withoutDragged(item.children) : item.children }))
+    const insertBeforeTarget = (items: Note[]): Note[] => { const targetIndex = items.findIndex((item) => item.id === targetId); if (targetIndex !== -1 && dragged) return [...items.slice(0, targetIndex), dragged, ...items.slice(targetIndex)]; return items.map((item) => ({ ...item, children: item.children ? insertBeforeTarget(item.children) : item.children })) }
+    const removed = withoutDragged(notes)
+    if (dragged) setNotes(insertBeforeTarget(removed))
+  }
+
   const toggleExpanded = (id: string) => setExpanded((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+
+  const chooseTool = (type: DrawingTool) => {
+    const api = editorApi.current
+    if (!api) return
+    api.setActiveTool(type === 'image' ? { type, insertOnCanvasDirectly: true } : { type })
+    setActiveTool(type)
+    setMoreToolsOpen(false)
+  }
+
+  const historyShortcut = (redo = false) => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey: !isMac, metaKey: isMac, shiftKey: redo, bubbles: true }))
+  }
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return }
@@ -116,6 +255,21 @@ export default function Page() {
     document.documentElement.classList.toggle('dark', darkMode)
     document.documentElement.classList.toggle('light', !darkMode)
   }, [darkMode])
+
+  useEffect(() => {
+    const key = `vedoy-canvas-notes-v1-${user?.id ?? 'anonymous'}`
+    try {
+      const stored = window.localStorage.getItem(key)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) setNotes(parsed)
+      }
+    } catch { /* Keep the starter notebook if local storage is unavailable. */ }
+  }, [user?.id])
+
+  useEffect(() => {
+    try { window.localStorage.setItem(`vedoy-canvas-notes-v1-${user?.id ?? 'anonymous'}`, JSON.stringify(notes)) } catch { /* Optional device-local preference. */ }
+  }, [notes, user?.id])
 
   useEffect(() => {
     if (!authReady) return
@@ -155,23 +309,151 @@ export default function Page() {
     setSyncState('loading')
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
+      setNotes((current) => updateNoteTree(current, activeNote, (note) => ({ ...note, snapshot })))
       const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
     }, 800)
-  }, [user])
+  }, [user, activeNote])
 
-  const exportCanvas = async () => {
+  const exportCanvas = async (format: ExportFormat = 'svg') => {
     const api = editorApi.current
-    if (!api || api.getSceneElements().length === 0) return
-    const { exportToSvg } = await import('@excalidraw/excalidraw')
-    const svg = await exportToSvg({ elements: api.getSceneElements(), appState: { ...api.getAppState(), exportWithDarkMode: darkMode }, files: api.getFiles() })
-    const url = URL.createObjectURL(new Blob([svg.outerHTML], { type: 'image/svg+xml' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'vedoy-canvas.svg'
-    link.click()
-    URL.revokeObjectURL(url)
+    if (!api || api.getSceneElements().length === 0) { notify('Canvaset er tomt'); return }
+    const excalidraw = await import('@excalidraw/excalidraw')
+    const payload = { elements: api.getSceneElements(), appState: { ...api.getAppState(), exportWithDarkMode: darkMode }, files: api.getFiles() }
+    if (format === 'clipboard') {
+      await excalidraw.exportToClipboard({ ...payload, type: 'png' })
+      notify('PNG kopiert til utklippstavlen')
+      return
+    }
+    if (format === 'png') {
+      const blob = await excalidraw.exportToBlob({ ...payload, mimeType: 'image/png' })
+      downloadBlob(blob, 'vedoy-canvas.png')
+      return
+    }
+    const svg = await excalidraw.exportToSvg(payload)
+    downloadBlob(new Blob([svg.outerHTML], { type: 'image/svg+xml' }), 'vedoy-canvas.svg')
   }
+
+  const canvasText = () => {
+    const elements = editorApi.current?.getSceneElements() ?? []
+    const text = elements
+      .filter((element): element is typeof element & { text: string } => element.type === 'text' && 'text' in element)
+      .map((element) => element.text.trim())
+      .filter(Boolean)
+    return text.length ? text.join('\n\n') : 'Dette canvaset inneholder visuelle elementer uten egen tekst.'
+  }
+
+  const canvasPng = async () => {
+    const api = editorApi.current
+    if (!api || api.getSceneElements().length === 0) throw new Error('empty')
+    const { exportToBlob } = await import('@excalidraw/excalidraw')
+    return exportToBlob({ elements: api.getSceneElements(), appState: { ...api.getAppState(), exportWithDarkMode: darkMode, exportBackground: true }, files: api.getFiles(), mimeType: 'image/png', quality: 1 })
+  }
+
+  const exportText = () => {
+    const content = `Vedøy Canvas\n\n${canvasText()}\n`
+    downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), 'vedoy-canvas.txt')
+  }
+
+  const exportPdf = async () => {
+    try {
+      const png = await canvasPng()
+      const dataUrl = await blobToDataUrl(png)
+      const bitmap = await createImageBitmap(png)
+      const { jsPDF } = await import('jspdf')
+      const landscape = bitmap.width >= bitmap.height
+      const pdf = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4', compress: true })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const margin = 10
+      const scale = Math.min((pageWidth - margin * 2) / bitmap.width, (pageHeight - margin * 2) / bitmap.height)
+      const width = bitmap.width * scale
+      const height = bitmap.height * scale
+      pdf.addImage(dataUrl, 'PNG', (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST')
+      downloadBlob(pdf.output('blob'), 'vedoy-canvas.pdf')
+      bitmap.close()
+    } catch { notify('PDF kunne ikke eksporteres') }
+  }
+
+  const exportDocument = async (target: 'word' | 'google' | 'proton') => {
+    try {
+      const png = await canvasPng()
+      const imageBytes = new Uint8Array(await png.arrayBuffer())
+      const bitmap = await createImageBitmap(png)
+      const maxWidth = 620
+      const width = Math.min(bitmap.width, maxWidth)
+      const height = Math.round(bitmap.height * (width / bitmap.width))
+      const { Document, HeadingLevel, ImageRun, Packer, Paragraph } = await import('docx')
+      const document = new Document({ sections: [{ children: [
+        new Paragraph({ text: 'Vedøy Canvas', heading: HeadingLevel.TITLE }),
+        new Paragraph({ text: canvasText() }),
+        new Paragraph({ children: [new ImageRun({ data: imageBytes, type: 'png', transformation: { width, height } })] }),
+      ] }] })
+      const blob = await Packer.toBlob(document)
+      const suffix = target === 'google' ? '-google-docs' : target === 'proton' ? '-proton-docs' : ''
+      downloadBlob(blob, `vedoy-canvas${suffix}.docx`)
+      bitmap.close()
+      notify(target === 'word' ? 'Word-fil eksportert' : `DOCX klar for import i ${target === 'google' ? 'Google Docs' : 'Proton Docs'}`)
+    } catch { notify('Dokumentet kunne ikke eksporteres') }
+  }
+
+  const saveSceneFile = async () => {
+    const api = editorApi.current
+    if (!api) return
+    const { serializeAsJSON } = await import('@excalidraw/excalidraw')
+    downloadBlob(new Blob([serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local')], { type: 'application/json' }), 'vedoy-canvas.excalidraw')
+  }
+
+  const openSceneFile = async (file?: File) => {
+    const api = editorApi.current
+    if (!api || !file) return
+    try {
+      const { loadFromBlob } = await import('@excalidraw/excalidraw')
+      const data = await loadFromBlob(file, api.getAppState(), api.getSceneElements())
+      api.updateScene({ elements: data.elements, appState: data.appState })
+      if (data.files) api.addFiles(Object.values(data.files))
+      notify('Canvas åpnet')
+    } catch { notify('Filen kunne ikke åpnes') }
+  }
+
+  const exportLibrary = async () => {
+    const { serializeLibraryAsJSON } = await import('@excalidraw/excalidraw')
+    downloadBlob(new Blob([serializeLibraryAsJSON(libraryItems as never)], { type: 'application/json' }), 'vedoy-library.excalidrawlib')
+  }
+
+  const importLibrary = async (file?: File) => {
+    const api = editorApi.current
+    if (!api || !file) return
+    try {
+      const { loadLibraryFromBlob } = await import('@excalidraw/excalidraw')
+      const items = await loadLibraryFromBlob(file)
+      await api.updateLibrary({ libraryItems: items, merge: true })
+      notify('Bibliotek importert')
+    } catch { notify('Biblioteket kunne ikke importeres') }
+  }
+
+  const clearCanvas = () => {
+    if (!window.confirm('Tømme hele canvaset? Dette kan angres med Ctrl/Cmd + Z.')) return
+    editorApi.current?.resetScene()
+    notify('Canvas tømt')
+  }
+
+  const fileActions: Array<{ icon: typeof MousePointer2; label: string; action: () => void }> = [
+    { icon: FileUp, label: 'Åpne canvas', action: () => sceneInput.current?.click() },
+    { icon: Save, label: 'Lagre .excalidraw', action: () => void saveSceneFile() },
+    { icon: FileDown, label: 'Eksporter SVG', action: () => void exportCanvas('svg') },
+    { icon: ImageIcon, label: 'Eksporter PNG', action: () => void exportCanvas('png') },
+    { icon: FileText, label: 'Eksporter TXT', action: exportText },
+    { icon: FileType2, label: 'Eksporter PDF', action: () => void exportPdf() },
+    { icon: FileType2, label: 'Eksporter Word', action: () => void exportDocument('word') },
+    { icon: FileType2, label: 'For Google Docs', action: () => void exportDocument('google') },
+    { icon: FileType2, label: 'For Proton Docs', action: () => void exportDocument('proton') },
+    { icon: Clipboard, label: 'Kopier PNG', action: () => void exportCanvas('clipboard') },
+    { icon: LibraryBig, label: 'Importer bibliotek', action: () => libraryInput.current?.click() },
+    { icon: BookOpen, label: 'Eksporter bibliotek', action: () => void exportLibrary() },
+    { icon: HelpCircle, label: 'Snarveier og hjelp', action: () => setHelpOpen(true) },
+    { icon: Trash2, label: 'Tøm canvas', action: clearCanvas },
+  ]
 
   const signOut = async () => {
     await supabase?.auth.signOut()
@@ -179,29 +461,69 @@ export default function Page() {
     setSyncState('waiting')
   }
 
-  return <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
+  return <main className="relative min-h-screen overflow-hidden bg-background text-foreground"><style jsx global>{`.excalidraw .App-menu_top__left, .excalidraw .App-menu_top__right, .excalidraw .App-toolbar-container { display: none !important; }`}</style>
     <div className="absolute inset-0">
-      {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} />}
+      {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} />}
     </div>
 
-    <header className="absolute left-4 top-20 z-10 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 shadow-md backdrop-blur-md sm:left-6">
-      <button onClick={() => setNotebookOpen((open) => !open)} className={`flex size-8 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
+    <header className="absolute inset-x-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/95 px-2.5 py-2.5 shadow-md backdrop-blur-md sm:inset-x-6 sm:gap-2 sm:px-3">
+      <button onClick={() => { setNotebookOpen((open) => !open); setMoreToolsOpen(false) }} className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
       <div className="h-5 w-px bg-border" />
-      <span className="pr-1 text-sm font-semibold">Vedoy Canvas</span>
-      <button onClick={() => setDarkMode((value) => !value)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
+      <span className="hidden shrink-0 pr-1 text-sm font-semibold sm:inline">Vedoy Canvas</span>
+      <div className="h-5 w-px shrink-0 bg-border" />
+      <div className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="Tegneverktøy">
+        {drawingTools.map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
+      </div>
+      <div className="flex shrink-0 items-center gap-1 lg:hidden" aria-label="Hurtigverktøy">
+        {drawingTools.slice(0, 3).map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
+        <button type="button" onClick={() => { setMoreToolsOpen((open) => !open); setNotebookOpen(false) }} className={`flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium ${moreToolsOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label="Se flere verktøy" aria-expanded={moreToolsOpen}>Mer <ChevronDown className={`size-3.5 transition-transform ${moreToolsOpen ? 'rotate-180' : ''}`} /></button>
+      </div>
+      <button type="button" onClick={() => historyShortcut(false)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Angre" title="Angre"><Undo2 className="size-4" /></button>
+      <button type="button" onClick={() => historyShortcut(true)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Gjør om" title="Gjør om"><Redo2 className="size-4" /></button>
+      <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
+      <button onClick={() => setDarkMode((value) => !value)} className="hidden size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted sm:flex" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
+      <button onClick={() => editorApi.current?.toggleSidebar({ name: 'library' })} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne bibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Bibliotek</span></button>
+      <button onClick={() => { setActionsOpen((open) => !open); setMoreToolsOpen(false); setNotebookOpen(false) }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Fil og eksport"><Download className="size-4" /><span className="hidden xl:inline">Fil</span><ChevronDown className="size-3" /></button>
       {authReady && (user ? <>
         <span className="hidden max-w-36 truncate text-[11px] text-muted-foreground md:inline">{syncState === 'loading' ? 'Lagrer…' : syncState === 'error' ? 'Lagringsfeil' : 'Lagret'}</span>
         <button onClick={signOut} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted" aria-label="Logg ut"><LogOut className="size-4" /></button>
       </> : <button onClick={startLogin} disabled={!clientId} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground disabled:opacity-50"><LogIn className="size-3.5" />Logg inn</button>)}
     </header>
 
-    {notebookOpen && <aside className="absolute left-4 top-[8.75rem] z-10 flex max-h-[calc(100vh-10rem)] w-72 max-w-[calc(100vw-2rem)] flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 p-3 shadow-md backdrop-blur-md sm:left-6" aria-label="Notebook navigator">
-      <div className="flex items-center justify-between px-2 pb-3"><div className="flex items-center gap-2"><NotebookTabs className="size-4 text-muted-foreground" /><span className="text-xs font-semibold">Notebook</span></div><div className="flex items-center"><button onClick={addNote} className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Add sub note"><FilePlus2 className="size-3.5" /></button><button className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="New notebook"><FolderPlus className="size-3.5" /></button></div></div>
-      <div className="border-t border-border/70 pt-2"><NoteTree notes={notes} activeNote={activeNote} expanded={expanded} onSelect={setActiveNote} onToggle={toggleExpanded} /></div>
-      <div className="mt-3 border-t border-border/70 px-2 pt-3 text-[11px] leading-5 text-muted-foreground">Now editing <span className="font-medium text-foreground">{currentNote?.title}</span><br />Organize ideas with nested notes.</div>
+    <input ref={sceneInput} type="file" className="hidden" accept=".excalidraw,application/json" onChange={(event) => { void openSceneFile(event.target.files?.[0]); event.target.value = '' }} />
+    <input ref={libraryInput} type="file" className="hidden" accept=".excalidrawlib,application/json" onChange={(event) => { void importLibrary(event.target.files?.[0]); event.target.value = '' }} />
+
+    {actionsOpen && <div className="absolute right-4 top-[4.75rem] z-30 max-h-[calc(100vh-6rem)] w-64 overflow-y-auto rounded-xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur-md sm:right-6">
+      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Fil</div>
+      {fileActions.map(({ icon: Icon, label, action }) => <button key={label} type="button" onClick={() => { action(); setActionsOpen(false) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><Icon className="size-4" />{label}</button>)}
+    </div>}
+
+    {moreToolsOpen && <div className="absolute left-4 right-4 top-[4.75rem] z-20 grid grid-cols-4 gap-2 rounded-xl border border-border/70 bg-card/95 p-3 shadow-md backdrop-blur-md sm:left-auto sm:right-6 sm:w-80 lg:hidden" aria-label="Flere tegneverktøy">
+      {drawingTools.slice(3).map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}><Icon className="size-4" /><span>{tool.label}</span></button> })}
+      <button type="button" onClick={() => historyShortcut(false)} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"><Undo2 className="size-4" /><span>Angre</span></button>
+      <button type="button" onClick={() => historyShortcut(true)} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"><Redo2 className="size-4" /><span>Gjør om</span></button>
+      <button type="button" onClick={() => setDarkMode((value) => !value)} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden">{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}<span>Tema</span></button>
+      <button type="button" onClick={() => { editorApi.current?.toggleSidebar({ name: 'library' }); setMoreToolsOpen(false) }} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden"><BookOpen className="size-4" /><span>Bibliotek</span></button>
+      <button type="button" onClick={() => { setActionsOpen(true); setMoreToolsOpen(false) }} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden"><Download className="size-4" /><span>Fil</span></button>
+    </div>}
+
+    {notebookOpen && <aside className="absolute left-4 top-[4.75rem] z-10 flex max-h-[calc(100vh-6rem)] w-72 max-w-[calc(100vw-2rem)] flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 p-3 shadow-md backdrop-blur-md sm:left-6" aria-label="Notebook navigator">
+      <div className="flex items-center justify-between px-2 pb-3"><div className="flex items-center gap-2"><NotebookTabs className="size-4 text-muted-foreground" /><span className="text-xs font-semibold">Notebook</span></div><button onClick={() => setAddMenuOpen((open) => !open)} className={`flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground ${addMenuOpen ? 'bg-muted text-foreground' : ''}`} aria-label="Legg til bok eller side" aria-expanded={addMenuOpen}><FilePlus2 className="size-4" /></button></div>
+      {addMenuOpen && <div className="mb-2 rounded-lg border border-border/70 bg-background p-1.5 shadow-sm"><p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Legg til</p><button onClick={addBook} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><FolderPlus className="size-3.5" />Ny bok</button><button onClick={() => addPage()} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><FilePlus2 className="size-3.5" />Ny side</button><button onClick={addSubpage} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><StickyNote className="size-3.5" />Ny underfil</button><button onClick={addSubfolder} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><FolderPlus className="size-3.5" />Ny undermappe</button></div>}
+      <div className="border-t border-border/70 pt-2"><NoteTree notes={notes} activeNote={activeNote} expanded={expanded} onSelect={openNote} onToggle={toggleExpanded} onRename={beginRename} onFavorite={toggleFavorite} onDelete={deleteNote} onDrop={moveNote} /></div>
     </aside>}
 
-    <button onClick={exportCanvas} className="absolute right-4 top-20 z-10 flex items-center gap-2 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur-md sm:right-6" aria-label="Export canvas"><Download className="size-3.5" /><span className="hidden sm:inline">Export</span></button>
+    {nameDialog && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 p-4 backdrop-blur-sm" onClick={() => { setNameDialog(null); setEditingNoteId(null) }}>
+      <form onSubmit={(event) => { event.preventDefault(); saveNoteTitle() }} onClick={(event) => event.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nytt {nameDialog.kind}</p>
+        <h2 className="mt-1 text-lg font-semibold">Gi {nameDialog.kind === 'bok' ? 'boken' : 'siden'} et navn</h2>
+        <input autoFocus value={draftNoteTitle} onChange={(event) => setDraftNoteTitle(event.target.value)} className="mt-4 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/30" aria-label={`Navn på ${nameDialog.kind}`} />
+        <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => { setNameDialog(null); setEditingNoteId(null) }} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-muted">Avbryt</button><button type="submit" className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground">Lagre navn</button></div>
+      </form>
+    </div>}
+
     {authReady && !user && <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 mx-auto w-fit rounded-full border border-border/70 bg-card/95 px-4 py-2 text-xs text-muted-foreground shadow-md">Logg inn for sikker lagring i Supabase</div>}
+    {toast && <div className="absolute bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background shadow-lg">{toast}</div>}
+    {helpOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm" onClick={() => setHelpOpen(false)}><section className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Snarveier og hjelp</h2><button onClick={() => setHelpOpen(false)} className="rounded-lg px-3 py-1 text-sm hover:bg-muted">Lukk</button></div><div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2"><p><kbd>1</kbd> Velg</p><p><kbd>H</kbd> Flytt</p><p><kbd>R</kbd> Rektangel</p><p><kbd>O</kbd> Sirkel</p><p><kbd>A</kbd> Pil</p><p><kbd>P</kbd> Tegn</p><p><kbd>T</kbd> Tekst</p><p><kbd>Ctrl/Cmd + Z</kbd> Angre</p><p><kbd>Ctrl/Cmd + G</kbd> Grupper</p><p><kbd>Ctrl/Cmd + Shift + G</kbd> Løs opp</p></div><p className="mt-4 text-xs leading-5 text-muted-foreground">Høyreklikk på valgte elementer for lagrekkefølge, gruppering, justering, duplisering og å legge utvalget i biblioteket.</p></section></div>}
   </main>
 }

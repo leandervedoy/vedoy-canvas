@@ -58,11 +58,13 @@ export function CanvasEditor({
   darkMode,
   onApi,
   onSceneChange,
+  onLibraryChange,
 }: {
   initialSnapshot: CanvasSnapshot | null
   darkMode: boolean
   onApi: (api: ExcalidrawImperativeAPI) => void
   onSceneChange: (snapshot: CanvasSnapshot) => void
+  onLibraryChange?: (items: readonly unknown[]) => void
 }) {
   const initialData: ExcalidrawInitialDataState = initialSnapshot ?? starterScene(darkMode)
 
@@ -74,10 +76,12 @@ export function CanvasEditor({
         langCode="en"
         theme={darkMode ? 'dark' : 'light'}
         name="Vedoy Canvas"
+        handleKeyboardGlobally
         onChange={(elements, appState, files) => {
           const serialized = serializeAsJSON(elements, appState, files, 'database')
           onSceneChange(JSON.parse(serialized) as CanvasSnapshot)
         }}
+        onLibraryChange={(items) => onLibraryChange?.(items)}
         UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
       />
     </div>
