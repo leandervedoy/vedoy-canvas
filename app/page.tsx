@@ -10,7 +10,12 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const clientId = process.env.NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID
 const callbackUrl = 'https://vedoy-canvas.vercel.app/auth/callback'
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    storageKey: 'vedoy-canvas-auth-v1',
+    detectSessionInUrl: false,
+  },
+}) : null
 
 type Note = { id: string; title: string; children?: Note[] }
 
@@ -95,7 +100,10 @@ export default function Page() {
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return }
-    supabase.auth.getUser().then(({ data }) => { setUser(data.user ?? null); setAuthReady(true) })
+    // Never hold the canvas behind a slow or stale auth session. Authentication
+    // enhances persistence, but the drawing surface must always start instantly.
+    setAuthReady(true)
+    supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null)).catch(() => setUser(null))
     const { data } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null))
     return () => data.subscription.unsubscribe()
   }, [])
@@ -122,7 +130,12 @@ export default function Page() {
       if (error) { setSyncState('error'); return }
 
       if (data?.snapshot) {
-        loadSnapshot(editor.store, data.snapshot)
+        try {
+          loadSnapshot(editor.store, data.snapshot)
+        } catch {
+          setSyncState('error')
+          seedCanvas(editor)
+        }
       } else seedCanvas(editor)
 
       const save = async () => {
@@ -167,7 +180,7 @@ export default function Page() {
   }
 
   return <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-    <div className="absolute inset-0"><Tldraw onMount={setEditor} /></div>
+    <div className="absolute inset-0"><Tldraw key="vedoy-canvas-supabase-v1" onMount={setEditor} /></div>
 
     <header className="absolute left-4 top-20 z-10 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 shadow-md backdrop-blur-md sm:left-6">
       <button onClick={() => setNotebookOpen((open) => !open)} className={`flex size-8 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
