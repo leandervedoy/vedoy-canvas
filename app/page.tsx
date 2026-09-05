@@ -1,10 +1,16 @@
 'use client'
 
-import 'tldraw/tldraw.css'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
-import { getSnapshot, loadSnapshot, Tldraw, type Editor, type TLShapeId, toRichText } from 'tldraw'
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
+import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { ChevronDown, ChevronRight, Download, FilePlus2, FolderPlus, LogIn, LogOut, Menu, Moon, NotebookTabs, StickyNote, Sun } from 'lucide-react'
+
+const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
+  ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">Laster tegneflate…</div>,
+})
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -18,6 +24,12 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 }) : null
 
 type Note = { id: string; title: string; children?: Note[] }
+
+function isCanvasSnapshot(value: unknown): value is CanvasSnapshot {
+  if (!value || typeof value !== 'object') return false
+  const snapshot = value as Partial<CanvasSnapshot>
+  return Array.isArray(snapshot.elements) && Boolean(snapshot.appState) && typeof snapshot.appState === 'object' && Boolean(snapshot.files) && typeof snapshot.files === 'object'
+}
 
 const initialNotes: Note[] = [
   { id: 'canvas', title: 'Canvas ideas', children: [{ id: 'research', title: 'Research' }, { id: 'directions', title: 'Directions' }] },
@@ -41,15 +53,6 @@ function NoteTree({ notes, activeNote, expanded, onSelect, onToggle }: { notes: 
   })}</div>
 }
 
-function seedCanvas(editor: Editor) {
-  if (editor.getCurrentPageShapeIds().size > 0) return
-  editor.createShapes([
-    { type: 'note', x: 260, y: 180, props: { richText: toRichText('Ideas become clearer when you can see the whole picture.') } },
-    { type: 'geo', x: 650, y: 160, props: { geo: 'ellipse', w: 280, h: 190, color: 'blue', fill: 'semi', dash: 'draw', size: 'm' } },
-    { type: 'text', x: 280, y: 470, props: { richText: toRichText('Research\nCollect references before the next sketch.'), size: 'm', color: 'black' } },
-  ])
-}
-
 function encodeBase64Url(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -68,16 +71,17 @@ async function startLogin() {
 }
 
 export default function Page() {
-  const [editor, setEditor] = useState<Editor | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
   const [syncState, setSyncState] = useState<'waiting' | 'loading' | 'saved' | 'error'>('waiting')
+  const [initialSnapshot, setInitialSnapshot] = useState<CanvasSnapshot | null | undefined>(undefined)
   const [notebookOpen, setNotebookOpen] = useState(false)
   const [notes, setNotes] = useState(initialNotes)
   const [activeNote, setActiveNote] = useState('canvas')
   const [expanded, setExpanded] = useState(['canvas', 'launch'])
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const editorApi = useRef<ExcalidrawImperativeAPI | null>(null)
 
   const currentNote = useMemo(() => {
     const find = (items: Note[]): Note | undefined => {
@@ -111,61 +115,57 @@ export default function Page() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
     document.documentElement.classList.toggle('light', !darkMode)
-    editor?.user.updateUserPreferences({ colorScheme: darkMode ? 'dark' : 'light' })
-  }, [darkMode, editor])
+  }, [darkMode])
 
   useEffect(() => {
-    if (editor && authReady && !user) seedCanvas(editor)
-  }, [editor, authReady, user])
-
-  useEffect(() => {
-    if (!editor || !user || !supabase) return
+    if (!authReady) return
     let cancelled = false
-    let stopListening: (() => void) | undefined
 
     const initialize = async () => {
+      editorApi.current = null
+      if (!user || !supabase) {
+        setInitialSnapshot(null)
+        setSyncState('waiting')
+        return
+      }
+
+      setInitialSnapshot(undefined)
       setSyncState('loading')
       const { data, error } = await supabase.from('canvas_documents').select('snapshot').eq('user_id', user.id).maybeSingle()
       if (cancelled) return
-      if (error) { setSyncState('error'); return }
-
-      if (data?.snapshot) {
-        try {
-          loadSnapshot(editor.store, data.snapshot)
-        } catch {
-          setSyncState('error')
-          seedCanvas(editor)
-        }
-      } else seedCanvas(editor)
-
-      const save = async () => {
-        const snapshot = getSnapshot(editor.store)
-        const { error: saveError } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
-        if (!cancelled) setSyncState(saveError ? 'error' : 'saved')
+      if (error) {
+        setInitialSnapshot(null)
+        setSyncState('error')
+        return
       }
-
-      await save()
-      stopListening = editor.store.listen(() => {
-        setSyncState('loading')
-        if (saveTimer.current) clearTimeout(saveTimer.current)
-        saveTimer.current = setTimeout(save, 800)
-      }, { scope: 'document', source: 'user' })
+      const storedSnapshot = isCanvasSnapshot(data?.snapshot) ? data.snapshot : null
+      setInitialSnapshot(storedSnapshot)
+      setSyncState(storedSnapshot ? 'saved' : 'waiting')
     }
 
     initialize()
     return () => {
       cancelled = true
-      stopListening?.()
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
-  }, [editor, user])
+  }, [authReady, user])
+
+  const saveScene = useCallback((snapshot: CanvasSnapshot) => {
+    if (!user || !supabase) return
+    setSyncState('loading')
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(async () => {
+      const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      setSyncState(error ? 'error' : 'saved')
+    }, 800)
+  }, [user])
 
   const exportCanvas = async () => {
-    if (!editor) return
-    const ids = Array.from(editor.getCurrentPageShapeIds()) as TLShapeId[]
-    const svg = await editor.getSvgString(ids)
-    if (!svg) return
-    const url = URL.createObjectURL(new Blob([svg.svg], { type: 'image/svg+xml' }))
+    const api = editorApi.current
+    if (!api || api.getSceneElements().length === 0) return
+    const { exportToSvg } = await import('@excalidraw/excalidraw')
+    const svg = await exportToSvg({ elements: api.getSceneElements(), appState: { ...api.getAppState(), exportWithDarkMode: darkMode }, files: api.getFiles() })
+    const url = URL.createObjectURL(new Blob([svg.outerHTML], { type: 'image/svg+xml' }))
     const link = document.createElement('a')
     link.href = url
     link.download = 'vedoy-canvas.svg'
@@ -180,7 +180,9 @@ export default function Page() {
   }
 
   return <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-    <div className="absolute inset-0"><Tldraw key="vedoy-canvas-supabase-v1" onMount={setEditor} /></div>
+    <div className="absolute inset-0">
+      {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} />}
+    </div>
 
     <header className="absolute left-4 top-20 z-10 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 shadow-md backdrop-blur-md sm:left-6">
       <button onClick={() => setNotebookOpen((open) => !open)} className={`flex size-8 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
