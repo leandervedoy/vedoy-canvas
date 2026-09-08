@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
-import { ArrowRight, BookOpen, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Trash2, Type, Undo2 } from 'lucide-react'
+import { BookView } from '@/components/book-view'
+import type { Note } from '@/lib/notebook'
+import { ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Trash2, Type, Undo2 } from 'lucide-react'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
   ssr: false,
@@ -23,7 +25,6 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
   },
 }) : null
 
-type Note = { id: string; title: string; kind?: 'folder' | 'file'; favorite?: boolean; snapshot?: CanvasSnapshot; children?: Note[] }
 type DrawingTool = 'selection' | 'hand' | 'rectangle' | 'diamond' | 'ellipse' | 'arrow' | 'line' | 'freedraw' | 'text' | 'image' | 'eraser' | 'frame' | 'embeddable' | 'laser'
 
 const drawingTools: Array<{ type: DrawingTool; label: string; icon: typeof MousePointer2 }> = [
@@ -69,9 +70,11 @@ function isCanvasSnapshot(value: unknown): value is CanvasSnapshot {
   return Array.isArray(snapshot.elements) && Boolean(snapshot.appState) && typeof snapshot.appState === 'object' && Boolean(snapshot.files) && typeof snapshot.files === 'object'
 }
 
+type WorkspaceSnapshot = CanvasSnapshot & { vedoyNotebook?: Note[] }
+
 const initialNotes: Note[] = [
-  { id: 'canvas', title: 'Canvas ideas', kind: 'folder', children: [{ id: 'research', title: 'Research', kind: 'file' }, { id: 'directions', title: 'Directions', kind: 'file' }] },
-  { id: 'launch', title: 'Product launch', kind: 'folder', children: [{ id: 'timeline', title: 'Timeline', kind: 'file' }] },
+  { id: 'canvas', title: 'Idéboken', kind: 'folder', children: [{ id: 'ideas', title: 'Ideer', kind: 'folder', children: [{ id: 'research', title: 'Research', kind: 'file', content: 'Samle referanser, lenker og tanker her.' }, { id: 'directions', title: 'Retninger', kind: 'file' }] }] },
+  { id: 'launch', title: 'Produktlansering', kind: 'folder', children: [{ id: 'planning', title: 'Planlegging', kind: 'folder', children: [{ id: 'timeline', title: 'Tidslinje', kind: 'file' }] }] },
   { id: 'inbox', title: 'Untitled note', kind: 'file' },
 ]
 
@@ -112,6 +115,7 @@ async function startLogin() {
 }
 
 export default function Page() {
+  const [viewMode, setViewMode] = useState<'canvas' | 'book'>('canvas')
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
@@ -132,7 +136,11 @@ export default function Page() {
   const [nameDialog, setNameDialog] = useState<{ id: string; kind: 'bok' | 'side' } | null>(null)
   const [expanded, setExpanded] = useState(['canvas', 'launch'])
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notebookSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const localNotesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editorApi = useRef<ExcalidrawImperativeAPI | null>(null)
+  const notesRef = useRef(notes)
+  const activeNoteRef = useRef(activeNote)
   const sceneInput = useRef<HTMLInputElement | null>(null)
   const libraryInput = useRef<HTMLInputElement | null>(null)
 
@@ -158,10 +166,13 @@ export default function Page() {
     if (!api || !target) { setActiveNote(id); return }
     const { serializeAsJSON } = await import('@excalidraw/excalidraw')
     const currentSnapshot = JSON.parse(serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'database')) as CanvasSnapshot
-    setNotes((current) => updateNoteTree(current, activeNote, (note) => ({ ...note, snapshot: currentSnapshot })))
+    const updatedNotes = updateNoteTree(notesRef.current, activeNote, (note) => ({ ...note, snapshot: currentSnapshot }))
+    notesRef.current = updatedNotes
+    setNotes(updatedNotes)
+    activeNoteRef.current = id
+    setActiveNote(id)
     if (target.snapshot) api.updateScene({ elements: target.snapshot.elements, appState: { ...api.getAppState(), ...target.snapshot.appState } })
     else api.resetScene()
-    setActiveNote(id)
   }
 
   const saveNoteTitle = () => {
@@ -204,6 +215,21 @@ export default function Page() {
   }
 
   const addSubfolder = () => addFolder(activeNote)
+
+  const addSection = (bookId: string) => {
+    const id = `section-${Date.now()}`
+    const section: Note = { id, title: 'Ny seksjon', kind: 'folder', children: [] }
+    setNotes((current) => updateNoteTree(current, bookId, (note) => ({ ...note, children: [...(note.children ?? []), section] })))
+    setExpanded((current) => current.includes(bookId) ? current : [...current, bookId])
+    setActiveNote(id)
+    setEditingNoteId(id)
+    setDraftNoteTitle('Ny seksjon')
+    setNameDialog({ id, kind: 'bok' })
+  }
+
+  const updateNote = (id: string, changes: Partial<Pick<Note, 'title' | 'content'>>) => {
+    setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, ...changes })))
+  }
 
   const toggleFavorite = (id: string) => setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, favorite: !note.favorite })))
 
@@ -268,7 +294,16 @@ export default function Page() {
   }, [user?.id])
 
   useEffect(() => {
-    try { window.localStorage.setItem(`vedoy-canvas-notes-v1-${user?.id ?? 'anonymous'}`, JSON.stringify(notes)) } catch { /* Optional device-local preference. */ }
+    activeNoteRef.current = activeNote
+  }, [activeNote])
+
+  useEffect(() => {
+    notesRef.current = notes
+    if (localNotesTimer.current) clearTimeout(localNotesTimer.current)
+    localNotesTimer.current = setTimeout(() => {
+      try { window.localStorage.setItem(`vedoy-canvas-notes-v1-${user?.id ?? 'anonymous'}`, JSON.stringify(notes)) } catch { /* Optional device-local preference. */ }
+    }, 250)
+    return () => { if (localNotesTimer.current) clearTimeout(localNotesTimer.current) }
   }, [notes, user?.id])
 
   useEffect(() => {
@@ -292,7 +327,8 @@ export default function Page() {
         setSyncState('error')
         return
       }
-      const storedSnapshot = isCanvasSnapshot(data?.snapshot) ? data.snapshot : null
+      const storedSnapshot = isCanvasSnapshot(data?.snapshot) ? data.snapshot as WorkspaceSnapshot : null
+      if (Array.isArray(storedSnapshot?.vedoyNotebook)) setNotes(storedSnapshot.vedoyNotebook)
       setInitialSnapshot(storedSnapshot)
       setSyncState(storedSnapshot ? 'saved' : 'waiting')
     }
@@ -309,11 +345,30 @@ export default function Page() {
     setSyncState('loading')
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
-      setNotes((current) => updateNoteTree(current, activeNote, (note) => ({ ...note, snapshot })))
-      const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      const updatedNotes = updateNoteTree(notesRef.current, activeNoteRef.current, (note) => ({ ...note, snapshot }))
+      notesRef.current = updatedNotes
+      setNotes(updatedNotes)
+      const workspaceSnapshot: WorkspaceSnapshot = { ...snapshot, vedoyNotebook: updatedNotes }
+      const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
     }, 800)
   }, [user, activeNote])
+
+  useEffect(() => {
+    if (!user || !supabase || initialSnapshot === undefined) return
+    if (notebookSaveTimer.current) clearTimeout(notebookSaveTimer.current)
+    notebookSaveTimer.current = setTimeout(async () => {
+      const api = editorApi.current
+      if (!api) return
+      setSyncState('loading')
+      const { serializeAsJSON } = await import('@excalidraw/excalidraw')
+      const canvas = JSON.parse(serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'database')) as CanvasSnapshot
+      const workspaceSnapshot: WorkspaceSnapshot = { ...canvas, vedoyNotebook: notes }
+      const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      setSyncState(error ? 'error' : 'saved')
+    }, 1000)
+    return () => { if (notebookSaveTimer.current) clearTimeout(notebookSaveTimer.current) }
+  }, [initialSnapshot, notes, user])
 
   const exportCanvas = async (format: ExportFormat = 'svg') => {
     const api = editorApi.current
@@ -462,32 +517,37 @@ export default function Page() {
   }
 
   return <main className="relative min-h-screen overflow-hidden bg-background text-foreground"><style jsx global>{`.excalidraw .App-menu_top__left, .excalidraw .App-menu_top__right, .excalidraw .App-toolbar-container { display: none !important; }`}</style>
-    <div className="absolute inset-0">
+    <div className={`absolute inset-0 ${viewMode === 'canvas' ? 'block' : 'hidden'}`} aria-hidden={viewMode !== 'canvas'}>
       {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} />}
     </div>
+    {viewMode === 'book' && <div className="absolute inset-0"><BookView notes={notes} activeNote={activeNote} onSelect={(id) => { void openNote(id) }} onAddBook={addBook} onAddSection={addSection} onAddPage={addPage} onUpdate={updateNote} /></div>}
 
     <header className="absolute inset-x-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/95 px-2.5 py-2.5 shadow-md backdrop-blur-md sm:inset-x-6 sm:gap-2 sm:px-3">
       <button onClick={() => { setNotebookOpen((open) => !open); setMoreToolsOpen(false) }} className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
       <div className="h-5 w-px bg-border" />
       <span className="hidden shrink-0 pr-1 text-sm font-semibold sm:inline">Vedoy Canvas</span>
       <div className="h-5 w-px shrink-0 bg-border" />
-      <div className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="Tegneverktøy">
+      <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
+        <button type="button" onClick={() => setViewMode('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
+        <button type="button" onClick={() => { setViewMode('book'); setMoreToolsOpen(false); setActionsOpen(false) }} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'book' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Bok" aria-pressed={viewMode === 'book'}><BookOpen className="size-3.5" /><span className="hidden sm:inline">Bok</span></button>
+      </div>
+      <div className={`${viewMode === 'canvas' ? 'lg:flex' : 'lg:hidden'} hidden shrink-0 items-center gap-1`} aria-label="Tegneverktøy">
         {drawingTools.map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
       </div>
-      <div className="flex shrink-0 items-center gap-1 lg:hidden" aria-label="Hurtigverktøy">
-        {drawingTools.slice(0, 3).map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
+      <div className={`${viewMode === 'canvas' ? 'flex' : 'hidden'} shrink-0 items-center gap-1 lg:hidden`} aria-label="Hurtigverktøy">
+        {drawingTools.slice(0, 3).map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`${viewMode === 'canvas' ? 'sm:flex' : 'hidden'} hidden size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
         <button type="button" onClick={() => { setMoreToolsOpen((open) => !open); setNotebookOpen(false) }} className={`flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium ${moreToolsOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label="Se flere verktøy" aria-expanded={moreToolsOpen}>Mer <ChevronDown className={`size-3.5 transition-transform ${moreToolsOpen ? 'rotate-180' : ''}`} /></button>
       </div>
-      <button type="button" onClick={() => historyShortcut(false)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Angre" title="Angre"><Undo2 className="size-4" /></button>
-      <button type="button" onClick={() => historyShortcut(true)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Gjør om" title="Gjør om"><Redo2 className="size-4" /></button>
+      {viewMode === 'canvas' && <><button type="button" onClick={() => historyShortcut(false)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Angre" title="Angre"><Undo2 className="size-4" /></button>
+      <button type="button" onClick={() => historyShortcut(true)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Gjør om" title="Gjør om"><Redo2 className="size-4" /></button></>}
       <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
       <button onClick={() => setDarkMode((value) => !value)} className="hidden size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted sm:flex" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
-      <button onClick={() => editorApi.current?.toggleSidebar({ name: 'library' })} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne bibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Bibliotek</span></button>
+      {viewMode === 'canvas' && <button onClick={() => editorApi.current?.toggleSidebar({ name: 'library' })} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne bibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Bibliotek</span></button>}
       <button onClick={() => { setActionsOpen((open) => !open); setMoreToolsOpen(false); setNotebookOpen(false) }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Fil og eksport"><Download className="size-4" /><span className="hidden xl:inline">Fil</span><ChevronDown className="size-3" /></button>
       {authReady && (user ? <>
         <span className="hidden max-w-36 truncate text-[11px] text-muted-foreground md:inline">{syncState === 'loading' ? 'Lagrer…' : syncState === 'error' ? 'Lagringsfeil' : 'Lagret'}</span>
         <button onClick={signOut} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted" aria-label="Logg ut"><LogOut className="size-4" /></button>
-      </> : <button onClick={startLogin} disabled={!clientId} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground disabled:opacity-50"><LogIn className="size-3.5" />Logg inn</button>)}
+      </> : <button onClick={startLogin} disabled={!clientId} className="flex size-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-medium text-primary-foreground disabled:opacity-50 sm:h-auto sm:w-auto sm:px-3 sm:py-2" aria-label="Logg inn"><LogIn className="size-3.5" /><span className="hidden sm:inline">Logg inn</span></button>)}
     </header>
 
     <input ref={sceneInput} type="file" className="hidden" accept=".excalidraw,application/json" onChange={(event) => { void openSceneFile(event.target.files?.[0]); event.target.value = '' }} />
