@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Bold, CheckSquare, Code2, Heading1, Heading2, Heading3, ImagePlus, Italic, Link2, List, ListOrdered, Palette, Strikethrough, Table2, Underline, Video } from 'lucide-react'
 
 const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'FONT', 'H1', 'H2', 'H3', 'IFRAME', 'IMG', 'INPUT', 'LABEL', 'LI', 'MARK', 'OL', 'P', 'S', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL'])
@@ -74,6 +74,8 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
   const imageInput = useRef<HTMLInputElement | null>(null)
   const lastEmittedHtml = useRef('')
   const loadedPageId = useRef<string | null>(null)
+  const [insertDialog, setInsertDialog] = useState<'link' | 'video' | 'embed' | null>(null)
+  const [insertValue, setInsertValue] = useState('')
 
   useEffect(() => {
     const safeHtml = sanitizeRichHtml(html)
@@ -113,10 +115,8 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
   }
 
   const addLink = () => {
-    const value = window.prompt('Lim inn lenken')?.trim()
-    if (!value) return
-    const href = /^(https?:|mailto:)/i.test(value) ? value : `https://${value}`
-    command('createLink', href)
+    setInsertValue('')
+    setInsertDialog('link')
   }
 
   const addImage = (file?: File) => {
@@ -130,10 +130,33 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
   }
 
   const addVideo = () => {
-    const value = window.prompt('Lim inn en YouTube- eller Vimeo-lenke')?.trim()
+    setInsertValue('')
+    setInsertDialog('video')
+  }
+
+  const addEmbed = () => {
+    setInsertValue('')
+    setInsertDialog('embed')
+  }
+
+  const submitInsert = () => {
+    const value = insertValue.trim()
+    if (!value || !insertDialog) return
+    if (insertDialog === 'link') {
+      const href = /^(https?:|mailto:)/i.test(value) ? value : `https://${value}`
+      command('createLink', href)
+      setInsertDialog(null)
+      return
+    }
     if (!value) return
     try {
       const url = new URL(value)
+      if (insertDialog === 'embed') {
+        if (url.protocol !== 'https:') throw new Error('https')
+        insertHtml(`<figure class="rich-embed"><iframe src="${escapeHtml(url.toString())}" title="Innebygd HTML-innhold" width="100%" height="360" frameborder="0" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms"></iframe><figcaption>Innebygd innhold</figcaption></figure><p><br></p>`)
+        setInsertDialog(null)
+        return
+      }
       let embed = ''
       if (url.hostname === 'youtu.be') embed = `https://www.youtube-nocookie.com/embed/${url.pathname.slice(1)}`
       else if (url.hostname.endsWith('youtube.com')) embed = url.searchParams.get('v') ? `https://www.youtube-nocookie.com/embed/${url.searchParams.get('v')}` : value
@@ -141,17 +164,8 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
       else if (url.hostname === 'player.vimeo.com') embed = value
       if (!embed) throw new Error('unsupported')
       insertHtml(`<figure class="rich-video"><iframe src="${escapeHtml(embed)}" title="Video" width="100%" height="360" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe><figcaption>Video</figcaption></figure><p><br></p>`)
-    } catch { onNotify('Bruk en gyldig YouTube- eller Vimeo-lenke') }
-  }
-
-  const addEmbed = () => {
-    const value = window.prompt('Lim inn URL til HTML/innhold som skal bygges inn')?.trim()
-    if (!value) return
-    try {
-      const url = new URL(value)
-      if (url.protocol !== 'https:') throw new Error('https')
-      insertHtml(`<figure class="rich-embed"><iframe src="${escapeHtml(url.toString())}" title="Innebygd HTML-innhold" width="100%" height="360" frameborder="0" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms"></iframe><figcaption>Innebygd innhold</figcaption></figure><p><br></p>`)
-    } catch { onNotify('Kun HTTPS-lenker kan bygges inn') }
+      setInsertDialog(null)
+    } catch { onNotify(insertDialog === 'embed' ? 'Kun HTTPS-lenker kan bygges inn' : 'Bruk en gyldig YouTube- eller Vimeo-lenke') }
   }
 
   const addCanvas = async () => {
@@ -186,6 +200,7 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
       <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void addCanvas()} className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-violet-600 px-2.5 text-xs font-medium text-white hover:bg-violet-700" aria-label="Sett inn canvas"><Palette className="size-3.5" />Canvas</button>
     </div>
     <input ref={imageInput} type="file" className="hidden" accept="image/*" onChange={(event) => { addImage(event.target.files?.[0]); event.target.value = '' }} />
+    {insertDialog ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm" onClick={() => setInsertDialog(null)}><form className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-5 shadow-2xl dark:border-white/10 dark:bg-[#272727]" onSubmit={(event) => { event.preventDefault(); submitInsert() }} onClick={(event) => event.stopPropagation()}><h2 className="text-base font-semibold">{insertDialog === 'link' ? 'Sett inn lenke' : insertDialog === 'video' ? 'Sett inn video' : 'Bygg inn HTML-innhold'}</h2><p className="mt-1 text-xs text-black/55 dark:text-white/55">{insertDialog === 'link' ? 'Lim inn en nettadresse.' : insertDialog === 'video' ? 'Støtter YouTube og Vimeo.' : 'Kun HTTPS-lenker med sandbox.'}</p><input autoFocus value={insertValue} onChange={(event) => setInsertValue(event.target.value)} placeholder={insertDialog === 'link' ? 'https://...' : 'https://...'} className="mt-4 w-full rounded-lg border border-black/10 bg-transparent px-3 py-2.5 text-sm outline-none focus:border-violet-500 dark:border-white/10" aria-label="URL" /><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setInsertDialog(null)} className="rounded-lg px-3 py-2 text-xs text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10">Avbryt</button><button type="submit" className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-700">Sett inn</button></div></form></div> : null}
     <div
       ref={editorRef}
       className="rich-editor min-h-[calc(100vh-17rem)] w-full outline-none"
