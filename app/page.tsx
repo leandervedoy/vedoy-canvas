@@ -8,6 +8,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { BookView } from '@/components/book-view'
 import { createBookFromTemplate, type BookTemplateId, type Note } from '@/lib/notebook'
+import { getLocalScene, saveLocalScene } from '@/lib/local-scene-store'
 import { ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Trash2, Type, Undo2 } from 'lucide-react'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
@@ -179,7 +180,13 @@ export default function Page() {
   const updateNoteTree = (items: Note[], id: string, updater: (note: Note) => Note): Note[] => items.map((note) => note.id === id ? updater(note) : { ...note, children: note.children ? updateNoteTree(note.children, id, updater) : note.children })
 
   const beginRename = (id: string) => {
-    const find = (items: Note[]): Note | undefined => items.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.id === id)
+    const find = (items: Note[]): Note | undefined => {
+      for (const item of items) {
+        if (item.id === id) return item
+        const child = find(item.children ?? [])
+        if (child) return child
+      }
+    }
     const note = find(notes)
     if (note) { setEditingNoteId(id); setDraftNoteTitle(note.title); setNameDialog({ id, kind: note.children ? 'bok' : 'side' }); setActiveNote(id) }
   }
@@ -270,7 +277,13 @@ export default function Page() {
   const toggleFavorite = (id: string) => setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, favorite: !note.favorite })))
 
   const deleteNote = (id: string) => {
-    const find = (items: Note[]): Note | undefined => items.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.id === id)
+    const find = (items: Note[]): Note | undefined => {
+      for (const item of items) {
+        if (item.id === id) return item
+        const child = find(item.children ?? [])
+        if (child) return child
+      }
+    }
     const note = find(notes)
     if (!note || !window.confirm(`Slette ${note.title}?`)) return
     const remove = (items: Note[]): Note[] => items.filter((item) => item.id !== id).map((item) => ({ ...item, children: item.children ? remove(item.children) : item.children }))
@@ -349,7 +362,9 @@ export default function Page() {
     const initialize = async () => {
       editorApi.current = null
       if (!user || !supabase) {
-        setInitialSnapshot(null)
+        const localScene = await getLocalScene('anonymous')
+        if (cancelled) return
+        setInitialSnapshot(localScene)
         setSyncState('waiting')
         return
       }
@@ -387,13 +402,17 @@ export default function Page() {
   }, [authReady, user])
 
   const saveScene = useCallback((snapshot: CanvasSnapshot) => {
-    if (!user || !supabase) return
-    setSyncState('loading')
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       const updatedNotes = updateNoteTree(notesRef.current, activeNoteRef.current, (note) => ({ ...note, snapshot }))
       notesRef.current = updatedNotes
       setNotes(updatedNotes)
+      await saveLocalScene(user?.id ?? 'anonymous', snapshot)
+      if (!user || !supabase) {
+        setSyncState('waiting')
+        return
+      }
+      setSyncState('loading')
       const workspaceSnapshot: WorkspaceSnapshot = { ...snapshot, vedoyNotebook: updatedNotes }
       const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
@@ -624,7 +643,7 @@ export default function Page() {
     <div className={`absolute inset-0 ${viewMode === 'canvas' ? 'block' : 'hidden'}`} aria-hidden={viewMode !== 'canvas'}>
       {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} />}
     </div>
-    {viewMode === 'book' && <div className="absolute inset-0"><BookView notes={notes} activeNote={activeNote} currentUserId={user?.id} userEmail={user?.email} onSelect={(id) => { void openNote(id) }} onAddBook={addBook} onAddSection={addSection} onAddPage={addPage} onAddTemplate={addTemplate} onUpdate={updateNote} onOpenCanvas={openCanvasPage} onCanvasPreview={canvasPreview} onInvite={inviteToBook} onNotify={notify} /></div>}
+    {viewMode === 'book' && <div className="absolute inset-0"><BookView notes={notes} activeNote={activeNote} currentUserId={user?.id} userEmail={user?.email} onSelect={(id) => { void openNote(id) }} onAddBook={addBook} onAddSection={addSection} onAddPage={addPage} onAddFolder={addFolder} onRename={beginRename} onDelete={deleteNote} onAddTemplate={addTemplate} onUpdate={updateNote} onOpenCanvas={openCanvasPage} onCanvasPreview={canvasPreview} onInvite={inviteToBook} onNotify={notify} /></div>}
 
     <header className="absolute inset-x-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/95 px-2.5 py-2.5 shadow-md backdrop-blur-md sm:inset-x-6 sm:gap-2 sm:px-3">
       <button onClick={() => { setNotebookOpen((open) => !open); setMoreToolsOpen(false) }} className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
