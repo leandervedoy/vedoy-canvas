@@ -750,9 +750,8 @@ export default function Page() {
     <header className="absolute inset-x-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/95 px-2.5 py-2.5 shadow-md backdrop-blur-md sm:inset-x-6 sm:gap-2 sm:px-3">
       <button onClick={() => { setNotebookOpen((open) => !open); setMoreToolsOpen(false) }} className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
       <div className="h-5 w-px bg-border" />
-      <span className="hidden h-6 w-14 shrink-0 items-center sm:flex" aria-label="Vedøy">
-        <Image src="/vedoy-logo-black.png" alt="Vedøy" width={960} height={438} className="h-5 w-auto object-contain dark:hidden" priority />
-        <Image src="/vedoy-logo-white.png" alt="Vedøy" width={960} height={438} className="hidden h-5 w-auto object-contain dark:block" priority />
+      <span className="hidden h-7 w-28 shrink-0 items-center sm:flex" aria-label="Vedøy Canvas">
+        <Image src="/vedoy-canvas-logo.png" alt="Vedøy Canvas" width={1600} height={465} className="h-6 w-auto object-contain dark:brightness-125" priority />
       </span>
       <div className="h-5 w-px shrink-0 bg-border" />
       <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
