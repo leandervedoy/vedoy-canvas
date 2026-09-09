@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { BookMarked, ChevronRight, FilePlus2, FileText, FolderPlus, GripVertical, LayoutTemplate, Pencil, PanelLeftClose, PanelLeftOpen, Search, Share2, Trash2, Users, X } from 'lucide-react'
 import { RichTextEditor, richHtmlFromLegacy, sanitizeRichHtml } from '@/components/rich-text-editor'
 import { bookTemplates, noteSearchText, plainTextFromHtml, type BookTemplateId, type Note } from '@/lib/notebook'
@@ -64,6 +64,7 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ note: Note; x: number; y: number; parentId?: string } | null>(null)
+  const hoverMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const books = notes.filter((note) => note.kind === 'folder' || note.children)
   const activePath = findPath(notes, activeNote)
   const activeBook = activePath?.[0] ?? books[0] ?? notes[0]
@@ -97,6 +98,10 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
     }
   }, [contextMenu])
 
+  useEffect(() => () => {
+    if (hoverMenuTimer.current) clearTimeout(hoverMenuTimer.current)
+  }, [])
+
   const openContextMenu = (event: MouseEvent, note: Note) => {
     if (note.canEdit === false || activeBook?.canEdit === false) return
     event.preventDefault()
@@ -104,6 +109,22 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
     const width = 208
     const height = 180
     setContextMenu({ note, parentId: parentIdOf(notes, note.id), x: Math.min(event.clientX, window.innerWidth - width - 8), y: Math.min(event.clientY, window.innerHeight - height - 8) })
+  }
+
+  const scheduleHoverMenu = (event: MouseEvent, note: Note) => {
+    if (note.canEdit === false || activeBook?.canEdit === false) return
+    if (hoverMenuTimer.current) clearTimeout(hoverMenuTimer.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    hoverMenuTimer.current = setTimeout(() => {
+      const width = 208
+      const height = 180
+      setContextMenu({ note, parentId: parentIdOf(notes, note.id), x: Math.min(rect.right + 6, window.innerWidth - width - 8), y: Math.min(rect.top, window.innerHeight - height - 8) })
+    }, 1000)
+  }
+
+  const cancelHoverMenu = () => {
+    if (hoverMenuTimer.current) clearTimeout(hoverMenuTimer.current)
+    hoverMenuTimer.current = null
   }
 
   const submitInvite = async () => {
@@ -129,7 +150,7 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
           <button type="button" onClick={onAddBook} className="flex size-7 items-center justify-center rounded-md hover:bg-white/10" aria-label="Ny bok"><FolderPlus className="size-4" /></button>
         </div>
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-          {books.map((book, index) => <button key={book.id} type="button" onContextMenu={(event) => openContextMenu(event, book)} onClick={() => { const page = firstPage(book); onSelect(page?.id ?? book.id) }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs transition-colors ${book.id === activeBook?.id ? 'bg-white/14 text-white' : 'text-white/65 hover:bg-white/8 hover:text-white'}`}>
+          {books.map((book, index) => <button key={book.id} type="button" onMouseEnter={(event) => scheduleHoverMenu(event, book)} onMouseLeave={cancelHoverMenu} onContextMenu={(event) => openContextMenu(event, book)} onClick={() => { const page = firstPage(book); onSelect(page?.id ?? book.id) }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs transition-colors ${book.id === activeBook?.id ? 'bg-white/14 text-white' : 'text-white/65 hover:bg-white/8 hover:text-white'}`}>
             <span className={`h-7 w-1.5 rounded-full ${['bg-violet-400', 'bg-amber-400', 'bg-sky-400', 'bg-emerald-400'][index % 4]}`} />
             <BookMarked className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate font-medium">{book.title}</span>{book.shared ? <Users className="size-3 shrink-0 opacity-65" /> : null}
           </button>)}
@@ -146,7 +167,7 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
             <button type="button" onClick={() => setNavigationOpen(false)} className="flex size-7 shrink-0 items-center justify-center rounded-md text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white" aria-label="Lukk boknavigasjon"><PanelLeftClose className="size-4" /></button>
           </div>
           <div className="mt-3 flex gap-1 overflow-x-auto pb-2">
-            {sections.map((section) => <button key={section.id} type="button" onContextMenu={(event) => openContextMenu(event, section)} onClick={() => { const page = firstPage(section); onSelect(page?.id ?? section.id) }} className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-medium ${section.id === activeSection?.id ? 'bg-violet-600 text-white' : 'bg-black/5 text-black/55 hover:bg-black/10 dark:bg-white/10 dark:text-white/65'}`}>{section.title}</button>)}
+            {sections.map((section) => <button key={section.id} type="button" onMouseEnter={(event) => scheduleHoverMenu(event, section)} onMouseLeave={cancelHoverMenu} onContextMenu={(event) => openContextMenu(event, section)} onClick={() => { const page = firstPage(section); onSelect(page?.id ?? section.id) }} className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-medium ${section.id === activeSection?.id ? 'bg-violet-600 text-white' : 'bg-black/5 text-black/55 hover:bg-black/10 dark:bg-white/10 dark:text-white/65'}`}>{section.title}</button>)}
             {activeBook && canEdit ? <button type="button" onClick={() => onAddSection(activeBook.id)} className="shrink-0 rounded-md px-2 py-1 text-[10px] text-black/45 hover:bg-black/5 dark:text-white/45" aria-label="Ny seksjon">+ Seksjon</button> : null}
           </div>
           <label className="mt-1 flex items-center gap-2 rounded-lg border border-black/10 bg-white px-2.5 py-2 dark:border-white/10 dark:bg-black/20">
@@ -159,7 +180,7 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
           {pages.map((page) => {
             const path = findPath(notes, page.id) ?? []
             const preview = plainTextFromHtml(page.contentHtml) || page.content?.trim() || (noteSearchText(page).replace(page.title.toLowerCase(), '').trim()) || 'Tom side'
-            return <button key={page.id} type="button" onContextMenu={(event) => openContextMenu(event, page)} onClick={() => onSelect(page.id)} className={`mb-1 flex w-full items-start gap-2 rounded-lg px-2.5 py-2.5 text-left ${page.id === currentPage?.id ? 'bg-violet-100 text-violet-950 dark:bg-violet-500/20 dark:text-violet-100' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}>
+            return <button key={page.id} type="button" onMouseEnter={(event) => scheduleHoverMenu(event, page)} onMouseLeave={cancelHoverMenu} onContextMenu={(event) => openContextMenu(event, page)} onClick={() => onSelect(page.id)} className={`mb-1 flex w-full items-start gap-2 rounded-lg px-2.5 py-2.5 text-left ${page.id === currentPage?.id ? 'bg-violet-100 text-violet-950 dark:bg-violet-500/20 dark:text-violet-100' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}>
               <FileText className="mt-0.5 size-3.5 shrink-0 opacity-50" /><span className="min-w-0"><span className="block truncate text-xs font-medium">{page.title}</span><span className="mt-0.5 block truncate text-[10px] opacity-45">{normalizedQuery ? `${path[0]?.title ?? 'Bok'} · ` : ''}{preview}</span></span><ChevronRight className="ml-auto mt-0.5 size-3 opacity-30" />
             </button>
           })}
