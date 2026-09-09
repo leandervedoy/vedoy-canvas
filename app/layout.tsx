@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'Vedøy Canvas',
   description: 'Uendelig lerret. Full struktur.',
   generator: 'v0.app',
-  icons: { icon: '/vedoy-canvas-mark.png' },
+  icons: { icon: '/icon.png' },
 }
 
 export const viewport: Viewport = {
