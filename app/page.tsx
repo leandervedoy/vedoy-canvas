@@ -329,6 +329,18 @@ export default function Page() {
 
   const toggleExpanded = (id: string) => setExpanded((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
 
+  const changeView = (nextView: 'canvas' | 'book') => {
+    setViewMode(nextView)
+    setNotebookOpen(false)
+    setAddMenuOpen(false)
+    setMoreToolsOpen(false)
+    setActionsOpen(false)
+    setHelpOpen(false)
+    setEditingNoteId(null)
+    setNameDialog(null)
+    editorApi.current?.toggleSidebar({ name: null, force: false })
+  }
+
   const chooseTool = (type: DrawingTool) => {
     const api = editorApi.current
     if (!api) return
@@ -549,7 +561,7 @@ export default function Page() {
 
   const openCanvasPage = (pageId: string) => {
     void openNote(pageId)
-    setViewMode('canvas')
+    changeView('canvas')
   }
 
   const inviteToBook = async (bookId: string, email: string) => {
@@ -688,8 +700,8 @@ export default function Page() {
       </span>
       <div className="h-5 w-px shrink-0 bg-border" />
       <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
-        <button type="button" onClick={() => setViewMode('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
-        <button type="button" onClick={() => { setViewMode('book'); setMoreToolsOpen(false); setActionsOpen(false) }} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'book' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Bok" aria-pressed={viewMode === 'book'}><BookOpen className="size-3.5" /><span className="hidden sm:inline">Bok</span></button>
+        <button type="button" onClick={() => changeView('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
+        <button type="button" onClick={() => changeView('book')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'book' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Bok" aria-pressed={viewMode === 'book'}><BookOpen className="size-3.5" /><span className="hidden sm:inline">Bok</span></button>
       </div>
       <div className={`${viewMode === 'canvas' ? 'lg:flex' : 'lg:hidden'} hidden shrink-0 items-center gap-1`} aria-label="Tegneverktøy">
         {drawingTools.map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
