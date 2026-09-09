@@ -98,6 +98,32 @@ function withoutAccessMetadata(note: Note): Note {
   return { ...stored, children: note.children?.map(withoutAccessMetadata) }
 }
 
+function hasCanvasEmbed(items: Note[], canvasId: string): boolean {
+  return items.some((note) => (note.contentHtml?.includes(`data-canvas-embed="${canvasId}"`) ?? false) || hasCanvasEmbed(note.children ?? [], canvasId))
+}
+
+function refreshCanvasEmbeds(items: Note[], canvasId: string, preview: string): Note[] {
+  return items.map((note) => {
+    let contentHtml = note.contentHtml
+    if (contentHtml?.includes(`data-canvas-embed="${canvasId}"`)) {
+      const documentCopy = new DOMParser().parseFromString(`<div>${contentHtml}</div>`, 'text/html')
+      const root = documentCopy.body.firstElementChild
+      for (const figure of Array.from(root?.querySelectorAll('figure[data-canvas-embed]') ?? [])) {
+        if (figure.getAttribute('data-canvas-embed') !== canvasId) continue
+        let image = figure.querySelector('img')
+        if (!image) {
+          image = documentCopy.createElement('img')
+          image.alt = 'Canvas-tegning'
+          figure.insertBefore(image, figure.querySelector('figcaption'))
+        }
+        image.setAttribute('src', preview)
+      }
+      contentHtml = root?.innerHTML ?? contentHtml
+    }
+    return { ...note, contentHtml, children: note.children ? refreshCanvasEmbeds(note.children, canvasId, preview) : note.children }
+  })
+}
+
 const initialNotes: Note[] = [
   { id: 'canvas', title: 'Idéboken', kind: 'folder', children: [{ id: 'ideas', title: 'Ideer', kind: 'folder', children: [{ id: 'research', title: 'Research', kind: 'file', content: 'Samle referanser, lenker og tanker her.' }, { id: 'directions', title: 'Retninger', kind: 'file' }] }] },
   { id: 'launch', title: 'Produktlansering', kind: 'folder', children: [{ id: 'planning', title: 'Planlegging', kind: 'folder', children: [{ id: 'timeline', title: 'Tidslinje', kind: 'file' }] }] },
@@ -404,7 +430,15 @@ export default function Page() {
   const saveScene = useCallback((snapshot: CanvasSnapshot) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
-      const updatedNotes = updateNoteTree(notesRef.current, activeNoteRef.current, (note) => ({ ...note, snapshot }))
+      const canvasId = activeNoteRef.current
+      let updatedNotes = updateNoteTree(notesRef.current, canvasId, (note) => ({ ...note, snapshot }))
+      if (hasCanvasEmbed(updatedNotes, canvasId)) {
+        try {
+          const { exportToBlob } = await import('@excalidraw/excalidraw')
+          const preview = await blobToDataUrl(await exportToBlob({ elements: snapshot.elements, appState: { ...snapshot.appState, exportBackground: true }, files: snapshot.files, mimeType: 'image/png', quality: 0.75 }))
+          updatedNotes = refreshCanvasEmbeds(updatedNotes, canvasId, preview)
+        } catch { /* Keep the previous preview if rendering fails. */ }
+      }
       notesRef.current = updatedNotes
       setNotes(updatedNotes)
       await saveLocalScene(user?.id ?? 'anonymous', snapshot)

@@ -63,10 +63,15 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const imageInput = useRef<HTMLInputElement | null>(null)
+  const lastEmittedHtml = useRef('')
+  const loadedPageId = useRef<string | null>(null)
 
   useEffect(() => {
-    if (editorRef.current) editorRef.current.innerHTML = sanitizeRichHtml(html)
-  }, [pageId])
+    const safeHtml = sanitizeRichHtml(html)
+    if (editorRef.current && (loadedPageId.current !== pageId || lastEmittedHtml.current !== safeHtml)) editorRef.current.innerHTML = safeHtml
+    loadedPageId.current = pageId
+    lastEmittedHtml.current = safeHtml
+  }, [html, pageId])
 
   const saveEditor = () => {
     const editor = editorRef.current
@@ -75,7 +80,9 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
       if (checkbox.checked) checkbox.setAttribute('checked', '')
       else checkbox.removeAttribute('checked')
     }
-    onChange(sanitizeRichHtml(editor.innerHTML))
+    const safeHtml = sanitizeRichHtml(editor.innerHTML)
+    lastEmittedHtml.current = safeHtml
+    onChange(safeHtml)
   }
 
   const command = (name: string, value?: string) => {
