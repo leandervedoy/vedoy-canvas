@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Bold, CheckSquare, Heading1, Heading2, Heading3, ImagePlus, Italic, Link2, List, ListOrdered, Palette, Strikethrough, Table2, Underline } from 'lucide-react'
+import { Bold, CheckSquare, Code2, Heading1, Heading2, Heading3, ImagePlus, Italic, Link2, List, ListOrdered, Palette, Strikethrough, Table2, Underline, Video } from 'lucide-react'
 
-const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'FONT', 'H1', 'H2', 'H3', 'IMG', 'INPUT', 'LABEL', 'LI', 'MARK', 'OL', 'P', 'S', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL'])
-const allowedAttributes = new Set(['alt', 'checked', 'colspan', 'contenteditable', 'data-canvas-embed', 'data-task', 'face', 'href', 'rel', 'rowspan', 'size', 'src', 'target', 'type'])
+const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'FONT', 'H1', 'H2', 'H3', 'IFRAME', 'IMG', 'INPUT', 'LABEL', 'LI', 'MARK', 'OL', 'P', 'S', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL'])
+const allowedAttributes = new Set(['allow', 'allowfullscreen', 'alt', 'checked', 'colspan', 'contenteditable', 'data-canvas-embed', 'data-task', 'face', 'frameborder', 'height', 'href', 'loading', 'rel', 'rowspan', 'sandbox', 'size', 'src', 'target', 'title', 'type', 'width'])
 
 export function sanitizeRichHtml(html: string) {
   if (typeof window === 'undefined') return html
@@ -31,6 +31,15 @@ export function sanitizeRichHtml(html: string) {
     if (element.tagName === 'IMG') {
       const src = element.getAttribute('src') ?? ''
       if (!/^(https?:|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(src)) element.remove()
+    }
+    if (element.tagName === 'IFRAME') {
+      const src = element.getAttribute('src') ?? ''
+      if (!/^https:\/\/(www\.)?(youtube-nocookie\.com|youtube\.com|player\.vimeo\.com)\//i.test(src)) element.remove()
+      else {
+        element.setAttribute('loading', 'lazy')
+        element.setAttribute('title', element.getAttribute('title') || 'Innebygd innhold')
+        element.setAttribute('allowfullscreen', '')
+      }
     }
     if (element.tagName === 'INPUT') {
       element.setAttribute('type', 'checkbox')
@@ -120,6 +129,31 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
     reader.readAsDataURL(file)
   }
 
+  const addVideo = () => {
+    const value = window.prompt('Lim inn en YouTube- eller Vimeo-lenke')?.trim()
+    if (!value) return
+    try {
+      const url = new URL(value)
+      let embed = ''
+      if (url.hostname === 'youtu.be') embed = `https://www.youtube-nocookie.com/embed/${url.pathname.slice(1)}`
+      else if (url.hostname.endsWith('youtube.com')) embed = url.searchParams.get('v') ? `https://www.youtube-nocookie.com/embed/${url.searchParams.get('v')}` : value
+      else if (url.hostname === 'vimeo.com') embed = `https://player.vimeo.com/video/${url.pathname.split('/').filter(Boolean).pop()}`
+      else if (url.hostname === 'player.vimeo.com') embed = value
+      if (!embed) throw new Error('unsupported')
+      insertHtml(`<figure class="rich-video"><iframe src="${escapeHtml(embed)}" title="Video" width="100%" height="360" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe><figcaption>Video</figcaption></figure><p><br></p>`)
+    } catch { onNotify('Bruk en gyldig YouTube- eller Vimeo-lenke') }
+  }
+
+  const addEmbed = () => {
+    const value = window.prompt('Lim inn URL til HTML/innhold som skal bygges inn')?.trim()
+    if (!value) return
+    try {
+      const url = new URL(value)
+      if (url.protocol !== 'https:') throw new Error('https')
+      insertHtml(`<figure class="rich-embed"><iframe src="${escapeHtml(url.toString())}" title="Innebygd HTML-innhold" width="100%" height="360" frameborder="0" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms"></iframe><figcaption>Innebygd innhold</figcaption></figure><p><br></p>`)
+    } catch { onNotify('Kun HTTPS-lenker kan bygges inn') }
+  }
+
   const addCanvas = async () => {
     const preview = await onCanvasPreview()
     const image = preview ? `<img src="${preview}" alt="Canvas-tegning">` : '<div>Tomt canvas</div>'
@@ -137,6 +171,8 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
       <ToolbarButton label="Kursiv" onClick={() => command('italic')}><Italic className="size-4" /></ToolbarButton>
       <ToolbarButton label="Understreking" onClick={() => command('underline')}><Underline className="size-4" /></ToolbarButton>
       <ToolbarButton label="Gjennomstreking" onClick={() => command('strikeThrough')}><Strikethrough className="size-4" /></ToolbarButton>
+      <label className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-black/55 hover:bg-black/5 dark:text-white/55 dark:hover:bg-white/10" title="Tekstfarge"><span className="sr-only">Velg tekstfarge</span><input type="color" defaultValue="#1f2937" onChange={(event) => selectCommand('foreColor', event.target.value)} className="size-5 cursor-pointer rounded border-0 bg-transparent p-0" aria-label="Velg tekstfarge" /></label>
+      <label className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-black/55 hover:bg-black/5 dark:text-white/55 dark:hover:bg-white/10" title="Uthevingsfarge"><span className="sr-only">Velg uthevingsfarge</span><input type="color" defaultValue="#fef08a" onChange={(event) => selectCommand('hiliteColor', event.target.value)} className="size-5 cursor-pointer rounded border-0 bg-transparent p-0" aria-label="Velg uthevingsfarge" /></label>
       <ToolbarButton label="Punktliste" onClick={() => command('insertUnorderedList')}><List className="size-4" /></ToolbarButton>
       <ToolbarButton label="Nummerliste" onClick={() => command('insertOrderedList')}><ListOrdered className="size-4" /></ToolbarButton>
       <ToolbarButton label="Avkryssing" onClick={() => insertHtml('<p data-task="true"><input type="checkbox" contenteditable="false"> Oppgave</p>')}><CheckSquare className="size-4" /></ToolbarButton>
@@ -144,6 +180,8 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
       <ToolbarButton label="Tabell" onClick={() => insertHtml('<table><tbody><tr><th>Kolonne 1</th><th>Kolonne 2</th></tr><tr><td>Verdi</td><td>Verdi</td></tr></tbody></table><p><br></p>')}><Table2 className="size-4" /></ToolbarButton>
       <ToolbarButton label="Lenke" onClick={addLink}><Link2 className="size-4" /></ToolbarButton>
       <ToolbarButton label="Bilde" onClick={() => imageInput.current?.click()}><ImagePlus className="size-4" /></ToolbarButton>
+      <ToolbarButton label="Video" onClick={addVideo}><Video className="size-4" /></ToolbarButton>
+      <ToolbarButton label="HTML-innhold" onClick={addEmbed}><Code2 className="size-4" /></ToolbarButton>
       <span className="mx-1 h-5 w-px shrink-0 bg-black/10 dark:bg-white/10" />
       <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void addCanvas()} className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-violet-600 px-2.5 text-xs font-medium text-white hover:bg-violet-700" aria-label="Sett inn canvas"><Palette className="size-3.5" />Canvas</button>
     </div>

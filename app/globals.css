@@ -120,3 +120,6 @@
 .rich-editor figure[data-canvas-embed] > div { display: grid; min-height: 8rem; place-items: center; color: var(--muted-foreground); }
 .rich-editor figure[data-canvas-embed] img { width: 100%; max-height: 28rem; margin: 0; border-radius: 0; background: white; }
 .rich-editor figure[data-canvas-embed] figcaption { padding: 0.65rem 0.8rem; color: oklch(0.48 0.2 285); font-size: 0.75rem; font-weight: 600; }
+.rich-editor figure.rich-video, .rich-editor figure.rich-embed { margin: 1.25rem 0; overflow: hidden; border: 1px solid var(--border); border-radius: 0.8rem; background: var(--muted); }
+.rich-editor figure.rich-video iframe, .rich-editor figure.rich-embed iframe { display: block; width: 100%; min-height: 16rem; border: 0; }
+.rich-editor figure.rich-video figcaption, .rich-editor figure.rich-embed figcaption { padding: 0.65rem 0.8rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 600; }
