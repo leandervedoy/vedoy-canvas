@@ -645,6 +645,22 @@ export default function Page() {
     downloadBlob(new Blob([serializeLibraryAsJSON(libraryItems as never)], { type: 'application/json' }), 'vedoy-library.excalidrawlib')
   }
 
+  const openVedoyGraphics = async () => {
+    const api = editorApi.current
+    if (!api) return
+    const { convertToExcalidrawElements } = await import('@excalidraw/excalidraw')
+    const created = 1750000000000
+    const graphics = [
+      { id: 'vedoy-flow-node', name: 'Flow node', specs: [{ type: 'rectangle', x: 0, y: 0, width: 260, height: 100, backgroundColor: '#ede9fe', fillStyle: 'solid', strokeColor: '#7c3aed', roundness: { type: 3 } }, { type: 'text', x: 55, y: 37, width: 150, text: 'Prosess', fontSize: 24, strokeColor: '#4c1d95' }] },
+      { id: 'vedoy-flow-decision', name: 'Beslutning', specs: [{ type: 'diamond', x: 20, y: 0, width: 220, height: 140, backgroundColor: '#fef3c7', fillStyle: 'solid', strokeColor: '#d97706' }, { type: 'text', x: 66, y: 57, width: 130, text: 'Valg?', fontSize: 24, strokeColor: '#92400e' }] },
+      { id: 'vedoy-flow-start', name: 'Start / slutt', specs: [{ type: 'ellipse', x: 0, y: 0, width: 240, height: 100, backgroundColor: '#dcfce7', fillStyle: 'solid', strokeColor: '#16a34a' }, { type: 'text', x: 62, y: 37, width: 120, text: 'Start', fontSize: 24, strokeColor: '#166534' }] },
+      { id: 'vedoy-flow-note', name: 'Vedøy-notat', specs: [{ type: 'rectangle', x: 0, y: 0, width: 260, height: 150, backgroundColor: '#fef9c3', fillStyle: 'solid', strokeColor: '#ca8a04', roundness: { type: 3 } }, { type: 'text', x: 25, y: 28, width: 210, text: 'Husk dette', fontSize: 24, strokeColor: '#713f12' }] },
+      { id: 'vedoy-flow-arrow', name: 'Flyt-pil', specs: [{ type: 'arrow', x: 0, y: 40, width: 300, height: 0, startArrowhead: null, endArrowhead: 'arrow', strokeColor: '#7c3aed', strokeWidth: 4 }] },
+    ].map((item) => ({ id: item.id, status: 'published' as const, created, name: item.name, elements: convertToExcalidrawElements(item.specs as never) }))
+    await api.updateLibrary({ libraryItems: graphics as never, merge: true, openLibraryMenu: true })
+    notify('Vedøy-grafikk åpnet i biblioteket')
+  }
+
   const importLibrary = async (file?: File) => {
     const api = editorApi.current
     if (!api || !file) return
@@ -714,7 +730,7 @@ export default function Page() {
       <button type="button" onClick={() => historyShortcut(true)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Gjør om" title="Gjør om"><Redo2 className="size-4" /></button></>}
       <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
       <button onClick={() => setDarkMode((value) => !value)} className="hidden size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted sm:flex" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
-      {viewMode === 'canvas' && <button onClick={() => editorApi.current?.toggleSidebar({ name: 'library' })} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne bibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Bibliotek</span></button>}
+      {viewMode === 'canvas' && <button onClick={() => { void openVedoyGraphics() }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne grafikkbibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Grafikk</span></button>}
       <button onClick={() => { setActionsOpen((open) => !open); setMoreToolsOpen(false); setNotebookOpen(false) }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Fil og eksport"><Download className="size-4" /><span className="hidden xl:inline">Fil</span><ChevronDown className="size-3" /></button>
       {authReady && (user ? <>
         <span className="hidden max-w-36 truncate text-[11px] text-muted-foreground md:inline">{syncState === 'loading' ? 'Lagrer…' : syncState === 'error' ? 'Lagringsfeil' : 'Lagret'}</span>
@@ -735,7 +751,7 @@ export default function Page() {
       <button type="button" onClick={() => historyShortcut(false)} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"><Undo2 className="size-4" /><span>Angre</span></button>
       <button type="button" onClick={() => historyShortcut(true)} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"><Redo2 className="size-4" /><span>Gjør om</span></button>
       <button type="button" onClick={() => setDarkMode((value) => !value)} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden">{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}<span>Tema</span></button>
-      <button type="button" onClick={() => { editorApi.current?.toggleSidebar({ name: 'library' }); setMoreToolsOpen(false) }} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden"><BookOpen className="size-4" /><span>Bibliotek</span></button>
+      <button type="button" onClick={() => { void openVedoyGraphics(); setMoreToolsOpen(false) }} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden"><BookOpen className="size-4" /><span>Grafikk</span></button>
       <button type="button" onClick={() => { setActionsOpen(true); setMoreToolsOpen(false) }} className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground sm:hidden"><Download className="size-4" /><span>Fil</span></button>
     </div>}
 

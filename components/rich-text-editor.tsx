@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Bold, CheckSquare, Heading1, Heading2, ImagePlus, Italic, Link2, List, Palette } from 'lucide-react'
+import { Bold, CheckSquare, Heading1, Heading2, Heading3, ImagePlus, Italic, Link2, List, Palette, Strikethrough, Underline } from 'lucide-react'
 
-const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'H1', 'H2', 'H3', 'IMG', 'INPUT', 'LABEL', 'LI', 'OL', 'P', 'S', 'STRONG', 'U', 'UL'])
-const allowedAttributes = new Set(['alt', 'checked', 'contenteditable', 'data-canvas-embed', 'data-task', 'href', 'rel', 'src', 'target', 'type'])
+const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'FONT', 'H1', 'H2', 'H3', 'IMG', 'INPUT', 'LABEL', 'LI', 'OL', 'P', 'S', 'STRONG', 'U', 'UL'])
+const allowedAttributes = new Set(['alt', 'checked', 'contenteditable', 'data-canvas-embed', 'data-task', 'face', 'href', 'rel', 'size', 'src', 'target', 'type'])
 
 export function sanitizeRichHtml(html: string) {
   if (typeof window === 'undefined') return html
@@ -91,6 +91,12 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
     saveEditor()
   }
 
+  const selectCommand = (name: string, value: string) => {
+    editorRef.current?.focus()
+    document.execCommand(name, false, value)
+    saveEditor()
+  }
+
   const insertHtml = (value: string) => {
     editorRef.current?.focus()
     document.execCommand('insertHTML', false, value)
@@ -124,8 +130,13 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
     <div className="sticky top-0 z-10 mb-4 flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#272727]/95" aria-label="Rik tekst-verktøy">
       <ToolbarButton label="Overskrift 1" onClick={() => command('formatBlock', 'h1')}><Heading1 className="size-4" /></ToolbarButton>
       <ToolbarButton label="Overskrift 2" onClick={() => command('formatBlock', 'h2')}><Heading2 className="size-4" /></ToolbarButton>
+      <ToolbarButton label="Underoverskrift" onClick={() => command('formatBlock', 'h3')}><Heading3 className="size-4" /></ToolbarButton>
+      <label className="flex h-8 shrink-0 items-center rounded-md border border-black/10 px-1.5 text-[11px] dark:border-white/10"><span className="sr-only">Font</span><select defaultValue="Arial" onChange={(event) => selectCommand('fontName', event.target.value)} className="max-w-24 bg-transparent outline-none" aria-label="Velg font"><option>Arial</option><option>Georgia</option><option>Verdana</option><option>Courier New</option><option>Trebuchet MS</option></select></label>
+      <label className="flex h-8 shrink-0 items-center rounded-md border border-black/10 px-1.5 text-[11px] dark:border-white/10"><span className="sr-only">Størrelse</span><select defaultValue="3" onChange={(event) => selectCommand('fontSize', event.target.value)} className="w-14 bg-transparent outline-none" aria-label="Velg skriftstørrelse"><option value="1">10 px</option><option value="2">12 px</option><option value="3">14 px</option><option value="4">16 px</option><option value="5">20 px</option><option value="6">28 px</option><option value="7">36 px</option></select></label>
       <ToolbarButton label="Fet" onClick={() => command('bold')}><Bold className="size-4" /></ToolbarButton>
       <ToolbarButton label="Kursiv" onClick={() => command('italic')}><Italic className="size-4" /></ToolbarButton>
+      <ToolbarButton label="Understreking" onClick={() => command('underline')}><Underline className="size-4" /></ToolbarButton>
+      <ToolbarButton label="Gjennomstreking" onClick={() => command('strikeThrough')}><Strikethrough className="size-4" /></ToolbarButton>
       <ToolbarButton label="Punktliste" onClick={() => command('insertUnorderedList')}><List className="size-4" /></ToolbarButton>
       <ToolbarButton label="Avkryssing" onClick={() => insertHtml('<p data-task="true"><input type="checkbox" contenteditable="false"> Oppgave</p>')}><CheckSquare className="size-4" /></ToolbarButton>
       <ToolbarButton label="Lenke" onClick={addLink}><Link2 className="size-4" /></ToolbarButton>
