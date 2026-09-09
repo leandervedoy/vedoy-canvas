@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Bold, CheckSquare, Heading1, Heading2, Heading3, ImagePlus, Italic, Link2, List, Palette, Strikethrough, Underline } from 'lucide-react'
+import { Bold, CheckSquare, Heading1, Heading2, Heading3, ImagePlus, Italic, Link2, List, ListOrdered, Palette, Strikethrough, Table2, Underline } from 'lucide-react'
 
-const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'FONT', 'H1', 'H2', 'H3', 'IMG', 'INPUT', 'LABEL', 'LI', 'OL', 'P', 'S', 'STRONG', 'U', 'UL'])
-const allowedAttributes = new Set(['alt', 'checked', 'contenteditable', 'data-canvas-embed', 'data-task', 'face', 'href', 'rel', 'size', 'src', 'target', 'type'])
+const allowedTags = new Set(['A', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FIGCAPTION', 'FIGURE', 'FONT', 'H1', 'H2', 'H3', 'IMG', 'INPUT', 'LABEL', 'LI', 'MARK', 'OL', 'P', 'S', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL'])
+const allowedAttributes = new Set(['alt', 'checked', 'colspan', 'contenteditable', 'data-canvas-embed', 'data-task', 'face', 'href', 'rel', 'rowspan', 'size', 'src', 'target', 'type'])
 
 export function sanitizeRichHtml(html: string) {
   if (typeof window === 'undefined') return html
@@ -138,7 +138,10 @@ export function RichTextEditor({ pageId, html, onChange, onOpenCanvas, onCanvasP
       <ToolbarButton label="Understreking" onClick={() => command('underline')}><Underline className="size-4" /></ToolbarButton>
       <ToolbarButton label="Gjennomstreking" onClick={() => command('strikeThrough')}><Strikethrough className="size-4" /></ToolbarButton>
       <ToolbarButton label="Punktliste" onClick={() => command('insertUnorderedList')}><List className="size-4" /></ToolbarButton>
+      <ToolbarButton label="Nummerliste" onClick={() => command('insertOrderedList')}><ListOrdered className="size-4" /></ToolbarButton>
       <ToolbarButton label="Avkryssing" onClick={() => insertHtml('<p data-task="true"><input type="checkbox" contenteditable="false"> Oppgave</p>')}><CheckSquare className="size-4" /></ToolbarButton>
+      <ToolbarButton label="Nøkkelord" onClick={() => insertHtml('<mark>Nøkkelord</mark>')}><span className="text-[10px] font-bold">KEY</span></ToolbarButton>
+      <ToolbarButton label="Tabell" onClick={() => insertHtml('<table><tbody><tr><th>Kolonne 1</th><th>Kolonne 2</th></tr><tr><td>Verdi</td><td>Verdi</td></tr></tbody></table><p><br></p>')}><Table2 className="size-4" /></ToolbarButton>
       <ToolbarButton label="Lenke" onClick={addLink}><Link2 className="size-4" /></ToolbarButton>
       <ToolbarButton label="Bilde" onClick={() => imageInput.current?.click()}><ImagePlus className="size-4" /></ToolbarButton>
       <span className="mx-1 h-5 w-px shrink-0 bg-black/10 dark:bg-white/10" />

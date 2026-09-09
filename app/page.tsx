@@ -178,6 +178,7 @@ export default function Page() {
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [bookPickerOpen, setBookPickerOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [libraryItems, setLibraryItems] = useState<readonly unknown[]>([])
   const [activeTool, setActiveTool] = useState<DrawingTool>('selection')
@@ -336,6 +337,7 @@ export default function Page() {
     setMoreToolsOpen(false)
     setActionsOpen(false)
     setHelpOpen(false)
+    setBookPickerOpen(false)
     setEditingNoteId(null)
     setNameDialog(null)
     editorApi.current?.toggleSidebar({ name: null, force: false })
@@ -347,6 +349,12 @@ export default function Page() {
     api.setActiveTool(type === 'image' ? { type, insertOnCanvasDirectly: true } : { type })
     setActiveTool(type)
     setMoreToolsOpen(false)
+  }
+
+  const bookTextCommand = (name: string, value?: string) => {
+    document.execCommand(name, false, value)
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) selection.getRangeAt(0).commonAncestorContainer.parentElement?.closest('[contenteditable]')?.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatBlock' }))
   }
 
   const historyShortcut = (redo = false) => {
@@ -564,6 +572,31 @@ export default function Page() {
     changeView('canvas')
   }
 
+  const addBookToCanvas = async (bookId: string) => {
+    const api = editorApi.current
+    const book = findNote(notes, bookId)
+    if (!api || !book) return
+    const { convertToExcalidrawElements } = await import('@excalidraw/excalidraw')
+    const existing = api.getSceneElements()
+    const offset = (existing.length % 4) * 340
+    const elements = convertToExcalidrawElements([{
+      type: 'rectangle',
+      x: 180 + offset,
+      y: 160 + Math.floor(existing.length / 4) * 190,
+      width: 300,
+      height: 130,
+      backgroundColor: '#ede9fe',
+      fillStyle: 'solid',
+      strokeColor: '#7c3aed',
+      roundness: { type: 3 },
+      label: { text: `BOK\n${book.title}`, fontSize: 24 },
+      customData: { vedoyBookId: book.id },
+    }] as never)
+    api.updateScene({ elements: [...existing, ...elements] })
+    setBookPickerOpen(false)
+    notify(`Boken «${book.title}» er lagt på canvas`)
+  }
+
   const inviteToBook = async (bookId: string, email: string) => {
     if (!user || !supabase) return 'Logg inn for å dele bøker'
     const book = notes.find((note) => note.id === bookId)
@@ -703,7 +736,7 @@ export default function Page() {
 
   return <main className="relative min-h-screen overflow-hidden bg-background text-foreground"><style jsx global>{`.excalidraw .App-menu_top__left, .excalidraw .App-menu_top__right, .excalidraw .App-toolbar-container { display: none !important; }`}</style>
     <div className={`absolute inset-0 ${viewMode === 'canvas' ? 'block' : 'hidden'}`} aria-hidden={viewMode !== 'canvas'}>
-      {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} />}
+      {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} onOpenBook={(bookId) => { void openNote(bookId); changeView('book') }} />}
     </div>
     {viewMode === 'book' && <div className="absolute inset-0"><BookView notes={notes} activeNote={activeNote} currentUserId={user?.id} userEmail={user?.email} onSelect={(id) => { void openNote(id) }} onAddBook={addBook} onAddSection={addSection} onAddPage={addPage} onAddFolder={addFolder} onRename={beginRename} onDelete={deleteNote} onAddTemplate={addTemplate} onUpdate={updateNote} onOpenCanvas={openCanvasPage} onCanvasPreview={canvasPreview} onInvite={inviteToBook} onNotify={notify} /></div>}
 
@@ -719,6 +752,8 @@ export default function Page() {
         <button type="button" onClick={() => changeView('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
         <button type="button" onClick={() => changeView('book')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'book' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Bok" aria-pressed={viewMode === 'book'}><BookOpen className="size-3.5" /><span className="hidden sm:inline">Bok</span></button>
       </div>
+      {viewMode === 'book' && <div className="hidden min-w-0 items-center gap-1 overflow-x-auto md:flex" aria-label="Tekstverktøy"><select defaultValue="Arial" onMouseDown={(event) => event.preventDefault()} onChange={(event) => bookTextCommand('fontName', event.target.value)} className="h-8 max-w-24 rounded-md border border-border bg-transparent px-1 text-[11px]" aria-label="Velg font"><option>Arial</option><option>Georgia</option><option>Verdana</option><option>Courier New</option></select><select defaultValue="3" onMouseDown={(event) => event.preventDefault()} onChange={(event) => bookTextCommand('fontSize', event.target.value)} className="h-8 w-16 rounded-md border border-border bg-transparent px-1 text-[11px]" aria-label="Velg skriftstørrelse"><option value="1">10 px</option><option value="2">12 px</option><option value="3">14 px</option><option value="4">16 px</option><option value="5">20 px</option><option value="6">28 px</option><option value="7">36 px</option></select>{[['bold', 'B'], ['italic', 'I'], ['underline', 'U'], ['strikeThrough', 'S']].map(([command, label]) => <button key={command} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => bookTextCommand(command)} className="flex size-8 items-center justify-center rounded-md text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={command}>{label}</button>)}<button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => bookTextCommand('formatBlock', 'h2')} className="rounded-md px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground">H2</button></div>}
+      {viewMode === 'canvas' && <button type="button" onClick={() => setBookPickerOpen((open) => !open)} className={`hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex ${bookPickerOpen ? 'bg-muted text-foreground' : ''}`} aria-label="Legg bok på canvas" aria-expanded={bookPickerOpen}><BookOpen className="size-4" /><span className="hidden xl:inline">Bok</span></button>}
       <div className={`${viewMode === 'canvas' ? 'lg:flex' : 'lg:hidden'} hidden shrink-0 items-center gap-1`} aria-label="Tegneverktøy">
         {drawingTools.map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex size-8 items-center justify-center rounded-lg transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={tool.label} title={tool.label}><Icon className="size-4" /></button> })}
       </div>
@@ -745,6 +780,8 @@ export default function Page() {
       <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Fil</div>
       {fileActions.map(({ icon: Icon, label, action }) => <button key={label} type="button" onClick={() => { action(); setActionsOpen(false) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><Icon className="size-4" />{label}</button>)}
     </div>}
+
+    {bookPickerOpen && <div className="absolute left-4 top-[4.75rem] z-30 w-72 rounded-xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur-md sm:left-auto sm:right-6" aria-label="Bøker på canvas"><p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Legg bok på canvas</p>{notes.filter((note) => note.kind === 'folder' || note.children).map((book) => <button key={book.id} type="button" onClick={() => { void addBookToCanvas(book.id) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><BookOpen className="size-4" /><span className="truncate">{book.title}</span></button>)}</div>}
 
     {moreToolsOpen && <div className="absolute left-4 right-4 top-[4.75rem] z-20 grid grid-cols-4 gap-2 rounded-xl border border-border/70 bg-card/95 p-3 shadow-md backdrop-blur-md sm:left-auto sm:right-6 sm:w-80 lg:hidden" aria-label="Flere tegneverktøy">
       {drawingTools.slice(3).map((tool) => { const Icon = tool.icon; return <button key={tool.type} type="button" onClick={() => chooseTool(tool.type)} className={`flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[10px] transition-colors ${activeTool === tool.type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}><Icon className="size-4" /><span>{tool.label}</span></button> })}

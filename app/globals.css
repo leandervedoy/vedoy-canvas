@@ -106,6 +106,10 @@
 .rich-editor ul, .rich-editor ol { margin: 0.5rem 0; padding-left: 1.5rem; }
 .rich-editor ul { list-style: disc; }
 .rich-editor ol { list-style: decimal; }
+.rich-editor mark { border-radius: 0.2rem; background: oklch(0.86 0.18 95 / 0.7); padding: 0.05rem 0.2rem; }
+.rich-editor table { width: 100%; margin: 1rem 0; border-collapse: collapse; font-size: 0.95em; }
+.rich-editor th, .rich-editor td { border: 1px solid var(--border); padding: 0.55rem 0.7rem; text-align: left; vertical-align: top; }
+.rich-editor th { background: oklch(0.58 0.18 290 / 0.08); font-weight: 700; }
 .rich-editor blockquote { margin: 0.75rem 0; border-left: 3px solid oklch(0.58 0.18 290); padding-left: 1rem; opacity: 0.75; }
 .rich-editor a { color: oklch(0.53 0.22 285); text-decoration: underline; text-underline-offset: 3px; }
 .rich-editor img { display: block; max-height: 34rem; max-width: 100%; margin: 1rem auto; border-radius: 0.65rem; object-fit: contain; }

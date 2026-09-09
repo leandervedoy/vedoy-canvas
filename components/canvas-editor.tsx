@@ -1,6 +1,7 @@
 'use client'
 
 import '@excalidraw/excalidraw/index.css'
+import { useRef } from 'react'
 import { Excalidraw, convertToExcalidrawElements, serializeAsJSON } from '@excalidraw/excalidraw'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI, ExcalidrawInitialDataState } from '@excalidraw/excalidraw/types'
@@ -59,19 +60,22 @@ export function CanvasEditor({
   onApi,
   onSceneChange,
   onLibraryChange,
+  onOpenBook,
 }: {
   initialSnapshot: CanvasSnapshot | null
   darkMode: boolean
   onApi: (api: ExcalidrawImperativeAPI) => void
   onSceneChange: (snapshot: CanvasSnapshot) => void
   onLibraryChange?: (items: readonly unknown[]) => void
+  onOpenBook?: (bookId: string) => void
 }) {
+  const apiRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const initialData: ExcalidrawInitialDataState = initialSnapshot ?? starterScene(darkMode)
 
   return (
     <div className="h-full w-full" data-testid="vedoy-excalidraw">
       <Excalidraw
-        excalidrawAPI={onApi}
+        excalidrawAPI={(api) => { apiRef.current = api; onApi(api) }}
         initialData={initialData}
         langCode="en"
         theme={darkMode ? 'dark' : 'light'}
@@ -80,6 +84,13 @@ export function CanvasEditor({
         onChange={(elements, appState, files) => {
           const serialized = serializeAsJSON(elements, appState, files, 'database')
           onSceneChange(JSON.parse(serialized) as CanvasSnapshot)
+        }}
+        onPointerUp={() => {
+          const api = apiRef.current
+          if (!api) return
+          const selected = api.getSceneElements().find((element) => api.getAppState().selectedElementIds[element.id]) as (ExcalidrawElement & { customData?: { vedoyBookId?: string } }) | undefined
+          const bookId = selected?.customData?.vedoyBookId
+          if (bookId) onOpenBook?.(bookId)
         }}
         onLibraryChange={(items) => onLibraryChange?.(items)}
         UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
