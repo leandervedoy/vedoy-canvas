@@ -1,12 +1,13 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient, type User } from '@supabase/supabase-js'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { BookView } from '@/components/book-view'
-import type { Note } from '@/lib/notebook'
+import { createBookFromTemplate, type BookTemplateId, type Note } from '@/lib/notebook'
 import { ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Trash2, Type, Undo2 } from 'lucide-react'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
@@ -71,6 +72,30 @@ function isCanvasSnapshot(value: unknown): value is CanvasSnapshot {
 }
 
 type WorkspaceSnapshot = CanvasSnapshot & { vedoyNotebook?: Note[] }
+
+type CloudBookRow = {
+  id: string
+  owner_id: string
+  title: string
+  data: Note
+  updated_at: string
+}
+
+function withBookAccess(book: Note, userId: string): Note {
+  const ownerId = book.ownerId ?? userId
+  const shared = ownerId !== userId
+  const apply = (note: Note): Note => ({ ...note, ownerId, shared, canEdit: true, children: note.children?.map(apply) })
+  return apply(book)
+}
+
+function cloudBook(row: CloudBookRow, userId: string): Note {
+  return withBookAccess({ ...row.data, id: row.id, title: row.title, ownerId: row.owner_id }, userId)
+}
+
+function withoutAccessMetadata(note: Note): Note {
+  const { ownerId: _ownerId, shared: _shared, canEdit: _canEdit, ...stored } = note
+  return { ...stored, children: note.children?.map(withoutAccessMetadata) }
+}
 
 const initialNotes: Note[] = [
   { id: 'canvas', title: 'Idéboken', kind: 'folder', children: [{ id: 'ideas', title: 'Ideer', kind: 'folder', children: [{ id: 'research', title: 'Research', kind: 'file', content: 'Samle referanser, lenker og tanker her.' }, { id: 'directions', title: 'Retninger', kind: 'file' }] }] },
@@ -137,10 +162,12 @@ export default function Page() {
   const [expanded, setExpanded] = useState(['canvas', 'launch'])
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notebookSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bookSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const localNotesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editorApi = useRef<ExcalidrawImperativeAPI | null>(null)
   const notesRef = useRef(notes)
   const activeNoteRef = useRef(activeNote)
+  const skipNextBookSave = useRef(false)
   const sceneInput = useRef<HTMLInputElement | null>(null)
   const libraryInput = useRef<HTMLInputElement | null>(null)
 
@@ -185,8 +212,17 @@ export default function Page() {
 
   const addBook = () => {
     const id = `book-${Date.now()}`
-    setNotes((current) => [...current, { id, title: 'Ny bok', kind: 'folder', children: [] }])
+    setNotes((current) => [...current, { id, title: 'Ny bok', kind: 'folder', children: [], ownerId: user?.id, canEdit: true }])
     setActiveNote(id); setEditingNoteId(id); setDraftNoteTitle('Ny bok'); setNameDialog({ id, kind: 'bok' }); setAddMenuOpen(false)
+  }
+
+  const addTemplate = (templateId: BookTemplateId) => {
+    const book = { ...createBookFromTemplate(templateId), ownerId: user?.id, canEdit: true }
+    const firstPage = book.children?.[0]?.children?.[0]
+    setNotes((current) => [...current, book])
+    setExpanded((current) => [...new Set([...current, book.id, ...(book.children?.map((section) => section.id) ?? [])])])
+    setActiveNote(firstPage?.id ?? book.id)
+    notify(`${book.title} er opprettet`)
   }
 
   const addPage = (parentId?: string) => {
@@ -227,7 +263,7 @@ export default function Page() {
     setNameDialog({ id, kind: 'bok' })
   }
 
-  const updateNote = (id: string, changes: Partial<Pick<Note, 'title' | 'content'>>) => {
+  const updateNote = (id: string, changes: Partial<Pick<Note, 'title' | 'content' | 'contentHtml'>>) => {
     setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, ...changes })))
   }
 
@@ -320,17 +356,27 @@ export default function Page() {
 
       setInitialSnapshot(undefined)
       setSyncState('loading')
-      const { data, error } = await supabase.from('canvas_documents').select('snapshot').eq('user_id', user.id).maybeSingle()
+      const [documentResult, booksResult] = await Promise.all([
+        supabase.from('canvas_documents').select('snapshot').eq('user_id', user.id).maybeSingle(),
+        supabase.from('canvas_books').select('id, owner_id, title, data, updated_at').order('updated_at', { ascending: true }),
+      ])
       if (cancelled) return
-      if (error) {
+      if (documentResult.error) {
         setInitialSnapshot(null)
         setSyncState('error')
         return
       }
-      const storedSnapshot = isCanvasSnapshot(data?.snapshot) ? data.snapshot as WorkspaceSnapshot : null
-      if (Array.isArray(storedSnapshot?.vedoyNotebook)) setNotes(storedSnapshot.vedoyNotebook)
+      const storedSnapshot = isCanvasSnapshot(documentResult.data?.snapshot) ? documentResult.data.snapshot as WorkspaceSnapshot : null
+      const legacyNotes = Array.isArray(storedSnapshot?.vedoyNotebook) ? storedSnapshot.vedoyNotebook : null
+      if (!booksResult.error && booksResult.data?.length) {
+        const cloudBooks = (booksResult.data as CloudBookRow[]).map((book) => cloudBook(book, user.id))
+        const loosePages = (legacyNotes ?? []).filter((note) => note.kind === 'file' && !note.children)
+        setNotes([...cloudBooks, ...loosePages])
+      } else if (legacyNotes) {
+        setNotes(legacyNotes.map((note) => note.kind === 'folder' || note.children ? withBookAccess(note, user.id) : note))
+      }
       setInitialSnapshot(storedSnapshot)
-      setSyncState(storedSnapshot ? 'saved' : 'waiting')
+      setSyncState(documentResult.error || booksResult.error ? 'error' : storedSnapshot ? 'saved' : 'waiting')
     }
 
     initialize()
@@ -370,6 +416,44 @@ export default function Page() {
     return () => { if (notebookSaveTimer.current) clearTimeout(notebookSaveTimer.current) }
   }, [initialSnapshot, notes, user])
 
+  useEffect(() => {
+    if (!user || !supabase || initialSnapshot === undefined) return
+    if (skipNextBookSave.current) {
+      skipNextBookSave.current = false
+      return
+    }
+    if (bookSaveTimer.current) clearTimeout(bookSaveTimer.current)
+    bookSaveTimer.current = setTimeout(async () => {
+      const books = notes.filter((note) => note.kind === 'folder' || note.children)
+      const results = await Promise.all(books.map((book) => {
+        const data = withoutAccessMetadata(book)
+        const payload = { title: book.title, data, updated_at: new Date().toISOString() }
+        if (book.ownerId && book.ownerId !== user.id) return supabase.from('canvas_books').update(payload).eq('id', book.id)
+        return supabase.from('canvas_books').upsert({ id: book.id, owner_id: user.id, ...payload }, { onConflict: 'id' })
+      }))
+      setSyncState(results.some((result) => result.error) ? 'error' : 'saved')
+    }, 1200)
+    return () => { if (bookSaveTimer.current) clearTimeout(bookSaveTimer.current) }
+  }, [initialSnapshot, notes, user])
+
+  useEffect(() => {
+    if (!user || !supabase) return
+    const channel = supabase.channel(`canvas-books-${user.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_books' }, (payload) => {
+      const next = payload.new as CloudBookRow | undefined
+      const previous = payload.old as Partial<CloudBookRow> | undefined
+      skipNextBookSave.current = true
+      setNotes((current) => {
+        if (payload.eventType === 'DELETE' && previous?.id) return current.filter((note) => note.id !== previous.id)
+        if (!next?.id || !next.data) return current
+        const updated = cloudBook(next, user.id)
+        const index = current.findIndex((note) => note.id === next.id)
+        if (index === -1) return [...current, updated]
+        return current.map((note) => note.id === next.id ? updated : note)
+      })
+    }).subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [user])
+
   const exportCanvas = async (format: ExportFormat = 'svg') => {
     const api = editorApi.current
     if (!api || api.getSceneElements().length === 0) { notify('Canvaset er tomt'); return }
@@ -403,6 +487,26 @@ export default function Page() {
     if (!api || api.getSceneElements().length === 0) throw new Error('empty')
     const { exportToBlob } = await import('@excalidraw/excalidraw')
     return exportToBlob({ elements: api.getSceneElements(), appState: { ...api.getAppState(), exportWithDarkMode: darkMode, exportBackground: true }, files: api.getFiles(), mimeType: 'image/png', quality: 1 })
+  }
+
+  const canvasPreview = async (pageId: string) => {
+    if (pageId !== activeNoteRef.current) await openNote(pageId)
+    try { return await blobToDataUrl(await canvasPng()) } catch { return null }
+  }
+
+  const openCanvasPage = (pageId: string) => {
+    void openNote(pageId)
+    setViewMode('canvas')
+  }
+
+  const inviteToBook = async (bookId: string, email: string) => {
+    if (!user || !supabase) return 'Logg inn for å dele bøker'
+    const book = notes.find((note) => note.id === bookId)
+    if (!book || (book.ownerId && book.ownerId !== user.id)) return 'Bare eieren kan invitere til denne boken'
+    const bookResult = await supabase.from('canvas_books').upsert({ id: book.id, owner_id: user.id, title: book.title, data: withoutAccessMetadata(book), updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (bookResult.error) return `Deling feilet: ${bookResult.error.message}`
+    const { error } = await supabase.from('canvas_book_members').upsert({ book_id: book.id, owner_id: user.id, invitee_email: email, role: 'editor' }, { onConflict: 'book_id,invitee_email' })
+    return error ? `Delingen feilet: ${error.message}` : `Tilgang gitt til ${email}`
   }
 
   const exportText = () => {
@@ -520,12 +624,15 @@ export default function Page() {
     <div className={`absolute inset-0 ${viewMode === 'canvas' ? 'block' : 'hidden'}`} aria-hidden={viewMode !== 'canvas'}>
       {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} />}
     </div>
-    {viewMode === 'book' && <div className="absolute inset-0"><BookView notes={notes} activeNote={activeNote} onSelect={(id) => { void openNote(id) }} onAddBook={addBook} onAddSection={addSection} onAddPage={addPage} onUpdate={updateNote} /></div>}
+    {viewMode === 'book' && <div className="absolute inset-0"><BookView notes={notes} activeNote={activeNote} currentUserId={user?.id} userEmail={user?.email} onSelect={(id) => { void openNote(id) }} onAddBook={addBook} onAddSection={addSection} onAddPage={addPage} onAddTemplate={addTemplate} onUpdate={updateNote} onOpenCanvas={openCanvasPage} onCanvasPreview={canvasPreview} onInvite={inviteToBook} onNotify={notify} /></div>}
 
     <header className="absolute inset-x-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/95 px-2.5 py-2.5 shadow-md backdrop-blur-md sm:inset-x-6 sm:gap-2 sm:px-3">
       <button onClick={() => { setNotebookOpen((open) => !open); setMoreToolsOpen(false) }} className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
       <div className="h-5 w-px bg-border" />
-      <span className="hidden shrink-0 pr-1 text-sm font-semibold sm:inline">Vedoy Canvas</span>
+      <span className="hidden h-6 w-14 shrink-0 items-center sm:flex" aria-label="Vedøy">
+        <Image src="/vedoy-logo-black.png" alt="Vedøy" width={960} height={438} className="h-5 w-auto object-contain dark:hidden" priority />
+        <Image src="/vedoy-logo-white.png" alt="Vedøy" width={960} height={438} className="hidden h-5 w-auto object-contain dark:block" priority />
+      </span>
       <div className="h-5 w-px shrink-0 bg-border" />
       <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
         <button type="button" onClick={() => setViewMode('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
