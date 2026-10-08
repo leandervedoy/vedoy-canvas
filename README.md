@@ -1,6 +1,8 @@
 # Vedøy Canvas
 
-Et visuelt arbeidsområde for skisser, diagrammer og visuelle notater, bygget på Excalidraw.
+Vedøy Canvas er en visuell arbeidsflate for bøker, tavler, rammer, notater, design og nettsider. Målet er at kunder kan starte raskt uten konto, jobbe lokalt i nettleseren, og logge inn når de vil lagre prosjektet i skyen.
+
+Produksjon: https://canvas.vedoystudio.no
 
 ## Lokal bruk
 
@@ -17,43 +19,67 @@ npm run dev
 npm run build
 ```
 
-Produksjon: https://vedoy-canvas.vercel.app
+## Kundeklar funksjonalitet
 
-## Status
+- én tydelig Vedøy-meny med bøker, tavler og nettsider
+- bøker med sider, undersider, kategorier og rik tekst
+- tavler basert på Excalidraw for fri tegning, notater, bilder, former og rammer
+- rammer kan brukes som gjenbrukbare utsnitt og settes inn i bøker som levende klistremerker
+- nettsider kan lages med samme designflater og genereres med OpenRouter når nøkkel finnes
+- designbibliotek med ferdige maler for logo, Instagram-post, presentasjon og nettside-seksjon
+- eksport til SVG, PNG, TXT, PDF, DOCX og PowerPoint
+- import og eksport av `.excalidraw` og `.excalidrawlib`
+- lokal lagring for gjester via `localStorage`
+- innlogging og registrering via Vedøy Login, med Neon Postgres som identitetsdatabase
+- innloggede arbeidsflater og bøker lagres gjennom Neon API-et på Vedøy Login
+- gratiskvoter valideres på serveren: 2 bøker, 7 kategorier per bok og 10 sider per kategori
+- Supporter Checkout bruker Stripe, men abonnement aktiveres først når en signert webhook bekrefter betaling
 
-Canvaset har én samlet Vedøy-meny og støtter:
+## Miljøvariabler
 
-- utvalg, hånd, former, pil, linje, frihånd, tekst, bilde og viskelær
-- rammer, innebygd nettinnhold og laserpeker
-- angre/gjør om, zoom og Excalidraw sin høyreklikkmeny
-- bibliotek, import og eksport av `.excalidrawlib`
-- åpning og lagring av `.excalidraw`
-- eksport som SVG, PNG, TXT og PDF samt kopiering av PNG
-- DOCX-eksport for Word og kompatibel import i Google Docs og Proton Docs
-- lyst/mørkt tema og responsiv «Mer»-meny
-- separate canvases for each page, with books, subfolders and subfiles
-- rich text with headings, lists, checkboxes, links and embedded images
-- canvas previews inserted directly between paragraphs and reopened in Canvas view for editing
-- global search across page text, book titles and text elements inside canvases
-- reusable templates for customer meetings, project plans, idea books and weekly plans
-- per-book invitations and collaborative editing through Supabase Realtime
-- renaming, drag-and-drop reordering, favorites and deletion in the navigator
-- Vedøy Login og lagring av brukerens canvas i Supabase-tabellen `canvas_documents`
-
-Gruppering, lagrekkefølge, justering, duplisering og «legg til i bibliotek» finnes i høyreklikkmenyen når elementer er valgt.
-
-## Backend
-
-Følgende offentlige miljøvariabler må finnes lokalt og i Vercel:
+Legg disse inn lokalt og i Vercel:
 
 ```text
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_VEDOY_LOGIN_URL=https://vedoy-login.vercel.app
 NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID=
+OPENROUTER_API_KEY=
 ```
 
-`canvas_documents` må ha Row Level Security slik at en innlogget bruker bare kan lese og endre raden hvor `user_id = auth.uid()`. Kjør også migrasjonen i `supabase/migrations` for `canvas_books` og `canvas_book_members`; den aktiverer RLS, eier-/medlemspolicyer og Realtime for delte bøker. Aldri legg en Supabase service-role-nøkkel i klienten.
+`NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID` må være klient-ID-en som registreres i Vedøy Login. Dersom API-et skal bruke en annen vert, kan `NEXT_PUBLIC_VEDOY_API_URL` settes eksplisitt; ellers peker det automatisk på Vedøy Login. `OPENROUTER_API_KEY` er en servervariabel og skal aldri ha `NEXT_PUBLIC_`-prefiks.
 
-## Avgrensning
+Stripe konfigureres bare på Vedøy Login-serveren, aldri i Canvas:
 
-Samarbeid synkroniserer hele boken og bruker «siste lagring vinner». Det er ikke tegn-for-tegn-samskriving med konfliktfletting. Bilder under 2 MB lagres som en del av bokdataene; større mediebibliotek bør senere flyttes til en privat Supabase Storage-bucket.
+```text
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_SUPPORTER_PRICE_ID=
+```
+
+Stripe-prisen må være en aktiv NOK 19/måned-pris. Registrer webhooken på `/api/stripe/webhook` for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid` og `invoice.payment_failed`.
+
+## Vercel-oppsett
+
+I Vercel må miljøvariablene legges inn for Production, Preview og Development hvis alle miljøene skal fungere likt:
+
+```text
+NEXT_PUBLIC_VEDOY_LOGIN_URL
+NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID
+OPENROUTER_API_KEY
+```
+
+Etter endring av miljøvariabler må Canvas deployes på nytt. Stripe-hemmelighetene legges bare til `vedoy-oauth`-prosjektet.
+
+## Norsk backend videre
+
+Canvas innlogging, OAuth, bøker og arbeidsflater bruker Neon i Frankfurt. Vedøy Credits bruker foreløpig eldre Supabase-tabeller og må migreres separat før hele Vedøy Login kan kalles Neon-only. Neon ligger i EU, men ikke i Norge.
+
+- Go 1.22+
+- PocketBase med embedded SQLite
+- Caddy for HTTPS og reverse proxy
+- Litestream/restic/borg for backup på norsk infrastruktur
+
+Et SQLite-skjema for en egen norsk Vedøy-backend ligger i `sovereign/sqlite-schema.sql`.
+
+## Begrensninger
+
+Samarbeid synkroniserer hele prosjektet og bruker siste lagring som vinner. Det er ikke tegn-for-tegn-samskriving med konfliktfletting ennå. Eksisterende Supabase-kontoer og prosjektdata flyttes ikke automatisk.
