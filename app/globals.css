@@ -2,6 +2,43 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
+.vedoy-extra-toolbar-slot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  padding-left: 5px;
+  border-left: 1px solid var(--default-border-color, #d6d6d6);
+}
+
+.vedoy-extra-tool {
+  display: grid;
+  place-items: center;
+  width: var(--default-button-size, 36px);
+  height: var(--default-button-size, 36px);
+  border-radius: 8px;
+  color: var(--icon-fill-color, #222);
+  cursor: pointer;
+}
+
+.vedoy-extra-tool:hover { background: var(--button-hover-bg, #eee); }
+.vedoy-extra-tool.is-active { background: var(--color-primary-light, #e9e6ff); color: var(--color-primary, #6965db); }
+.vedoy-extra-tool:focus-visible { outline: 2px solid var(--color-primary, #6965db); outline-offset: 2px; }
+
+.vedoy-frame-save-message {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  z-index: 30;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: #222;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 13px;
+  pointer-events: none;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -115,11 +152,121 @@
 .rich-editor img { display: block; max-height: 34rem; max-width: 100%; margin: 1rem auto; border-radius: 0.65rem; object-fit: contain; }
 .rich-editor [data-task='true'] { display: flex; align-items: flex-start; gap: 0.55rem; }
 .rich-editor input[type='checkbox'] { margin-top: 0.45rem; accent-color: oklch(0.58 0.22 290); }
-.rich-editor figure[data-canvas-embed] { margin: 1.25rem 0; overflow: hidden; border: 1px solid oklch(0.58 0.18 290 / 0.25); border-radius: 0.8rem; background: oklch(0.58 0.18 290 / 0.05); cursor: pointer; }
-.rich-editor figure[data-canvas-embed]:hover { border-color: oklch(0.58 0.18 290 / 0.6); }
+.rich-editor figure[data-canvas-embed] { margin: 1.25rem 0; overflow: hidden; border: 2px solid oklch(0.58 0.18 290 / 0.55); border-radius: 0.8rem; background: oklch(0.58 0.18 290 / 0.05); cursor: pointer; }
+.rich-editor figure[data-canvas-embed]:hover { border-color: oklch(0.58 0.18 290 / 0.85); }
 .rich-editor figure[data-canvas-embed] > div { display: grid; min-height: 8rem; place-items: center; color: var(--muted-foreground); }
-.rich-editor figure[data-canvas-embed] img { width: 100%; max-height: 28rem; margin: 0; border-radius: 0; background: white; }
+.rich-editor figure[data-canvas-embed] img { width: 100%; max-height: 28rem; margin: 0; border-radius: 0; background: white; object-fit: contain; }
 .rich-editor figure[data-canvas-embed] figcaption { padding: 0.65rem 0.8rem; color: oklch(0.48 0.2 285); font-size: 0.75rem; font-weight: 600; }
 .rich-editor figure.rich-video, .rich-editor figure.rich-embed { margin: 1.25rem 0; overflow: hidden; border: 1px solid var(--border); border-radius: 0.8rem; background: var(--muted); }
 .rich-editor figure.rich-video iframe, .rich-editor figure.rich-embed iframe { display: block; width: 100%; min-height: 16rem; border: 0; }
 .rich-editor figure.rich-video figcaption, .rich-editor figure.rich-embed figcaption { padding: 0.65rem 0.8rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 600; }
+
+/* Reserve real space for application chrome, including wrapped mobile headers. */
+.vedoy-workspace .vedoy-header {
+  position: fixed;
+  inset: 0 0 auto;
+  max-width: 100%;
+  flex-wrap: wrap;
+  overflow: visible;
+  border-radius: 0;
+  min-height: 64px;
+  gap: 6px;
+  z-index: 50;
+}
+.vedoy-workspace .vedoy-canvas-area,
+.vedoy-workspace .vedoy-book-area {
+  top: var(--workspace-top);
+}
+.vedoy-workspace .vedoy-navigation {
+  position: fixed;
+  top: calc(var(--workspace-top) + 12px);
+  bottom: 12px;
+  left: 12px;
+  width: 304px;
+  max-height: none;
+  max-width: calc(100vw - 24px);
+  animation: vedoy-panel-in 180ms ease-out;
+}
+.vedoy-tree-row > button[aria-label^='Rediger'],
+.vedoy-tree-row > button[aria-label^='Slett'],
+.vedoy-tree-row > button[aria-label*='favoritt'] {
+  display: none;
+}
+.vedoy-tree-row:hover > button,
+.vedoy-tree-row:focus-within > button {
+  display: flex;
+}
+.vedoy-popover { animation: vedoy-panel-in 140ms ease-out; }
+.vedoy-workspace button { transition: background-color 140ms ease, color 140ms ease, opacity 140ms ease; }
+.vedoy-board-dock {
+  position: fixed;
+  z-index: 55;
+  right: 50%;
+  bottom: 18px;
+  display: flex;
+  width: min(760px, calc(100vw - 32px));
+  translate: 50% 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgb(19 62 91 / 0.16);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.94);
+  padding: 7px;
+  box-shadow: 0 16px 45px rgb(15 23 42 / 0.18);
+  backdrop-filter: blur(18px);
+}
+.dark .vedoy-board-dock { background: rgb(30 30 30 / 0.94); }
+.vedoy-board-tabs { display: flex; min-width: 0; flex: 1; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+.vedoy-board-tab { display: flex; min-width: 132px; max-width: 210px; align-items: center; gap: 4px; border-radius: 12px; color: var(--muted-foreground); }
+.vedoy-board-tab > button:first-child { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; padding: 8px 4px 8px 8px; font-size: 12px; font-weight: 650; }
+.vedoy-board-tab:hover { background: var(--muted); color: var(--foreground); }
+.vedoy-board-tab.is-active { background: #173f5f; color: white; box-shadow: 0 6px 16px rgb(23 63 95 / .22); }
+.vedoy-board-number { display: grid; width: 22px; height: 22px; flex: none; place-items: center; border-radius: 8px; background: rgb(255 255 255 / .16); font-size: 10px; font-weight: 800; }
+.vedoy-board-rename { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 8px; opacity: 0; }
+.vedoy-board-tab:hover .vedoy-board-rename, .vedoy-board-tab:focus-within .vedoy-board-rename { opacity: 1; }
+.vedoy-board-add { display: flex; height: 38px; flex: none; align-items: center; gap: 6px; border-radius: 12px; background: #2ea5a8; padding: 0 12px; color: white; font-size: 12px; font-weight: 700; }
+.vedoy-library-panel { position: fixed; z-index: 70; top: calc(var(--workspace-top) + 10px); right: 10px; bottom: 74px; width: min(340px, calc(100vw - 20px)); overflow-y: auto; border: 1px solid rgb(19 62 91 / .15); border-radius: 22px; background: rgb(255 255 255 / .96); padding: 16px; box-shadow: 0 20px 50px rgb(15 23 42 / .2); backdrop-filter: blur(18px); animation: vedoy-panel-in 160ms ease-out; }
+.dark .vedoy-library-panel { background: rgb(32 32 32 / .96); }
+.design-library { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.fabric-tool { display: flex; height: 36px; align-items: center; gap: 6px; border: 1px solid rgb(203 213 225); border-radius: 10px; padding: 0 10px; font-size: 12px; font-weight: 650; }
+@media (min-width: 1100px) {
+  .vedoy-workspace .vedoy-navigation { width: 248px; transition: width 180ms ease; }
+  .vedoy-workspace .vedoy-navigation:hover,
+  .vedoy-workspace .vedoy-navigation:focus-within { width: 344px; }
+  .vedoy-workspace[data-navigation='true'] .vedoy-canvas-area,
+  .vedoy-workspace[data-navigation='true'] .vedoy-book-area { left: 272px; transition: left 180ms ease; }
+  .vedoy-workspace:has(.vedoy-navigation:hover) .vedoy-canvas-area,
+  .vedoy-workspace:has(.vedoy-navigation:focus-within) .vedoy-canvas-area,
+  .vedoy-workspace:has(.vedoy-navigation:hover) .vedoy-book-area,
+  .vedoy-workspace:has(.vedoy-navigation:focus-within) .vedoy-book-area { left: 368px; }
+}
+@media (max-width: 640px) {
+  .vedoy-board-dock { right: 8px; left: 8px; width: auto; translate: none; }
+  .vedoy-board-add span { display: none; }
+  .vedoy-board-add { width: 40px; justify-content: center; padding: 0; }
+  .vedoy-board-tab { min-width: 112px; }
+}
+@media (max-width: 1099px) {
+  .vedoy-workspace .vedoy-navigation {
+    top: var(--workspace-top);
+    bottom: 0;
+    left: 0;
+    width: min(22rem, calc(100vw - 2.5rem));
+    height: auto;
+    max-width: none;
+    border-radius: 0 1rem 1rem 0;
+    box-shadow: 12px 0 36px rgb(0 0 0 / 0.16);
+    z-index: 60;
+  }
+}
+@media (hover: none) {
+  .vedoy-tree-row > button[aria-label^='Rediger'] { display: flex; }
+  .vedoy-tree-row button[aria-label^='Legg til under'] { opacity: 1; }
+}
+@keyframes vedoy-panel-in {
+  from { opacity: 0; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vedoy-workspace *, .vedoy-popover { animation: none !important; transition: none !important; }
+}

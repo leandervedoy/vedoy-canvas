@@ -3,11 +3,17 @@ import type { CanvasSnapshot } from '@/components/canvas-editor'
 export type Note = {
   id: string
   title: string
-  kind?: 'folder' | 'file'
+  kind?: 'folder' | 'category' | 'file' | 'board' | 'canvas' | 'frame' | 'website'
   favorite?: boolean
   content?: string
   contentHtml?: string
   snapshot?: CanvasSnapshot
+  width?: number
+  height?: number
+  framePageId?: string
+  canvasBoardId?: string
+  websiteHtml?: string
+  websitePrompt?: string
   children?: Note[]
   ownerId?: string
   shared?: boolean
@@ -22,6 +28,46 @@ export type BookTemplate = {
   description: string
 }
 
+export const FREE_BOOK_LIMITS = { books: 2, categoriesPerBook: 7, pagesPerCategory: 10 } as const
+
+export function countNotesOfKind(notes: Note[], kind: NonNullable<Note['kind']>): number {
+  return notes.reduce((total, note) => total + (note.kind === kind ? 1 : 0) + countNotesOfKind(note.children ?? [], kind), 0)
+}
+
+export function countPagesInCategory(category: Note): number {
+  return (category.children ?? []).reduce((total, child) => {
+    if (child.kind === 'file') return total + 1
+    if (child.kind === 'category') return total + countPagesInCategory(child)
+    return total + countPagesInCategory(child)
+  }, 0)
+}
+
+export function findBookForNote(notes: Note[], noteId: string): Note | undefined {
+  const visit = (items: Note[], book?: Note): Note | undefined => {
+    for (const item of items) {
+      const currentBook = item.kind === 'folder' ? item : book
+      if (item.id === noteId) return currentBook
+      const found = visit(item.children ?? [], currentBook)
+      if (found) return found
+    }
+    return undefined
+  }
+  return visit(notes)
+}
+
+export function findCategoryForNote(notes: Note[], noteId: string): Note | undefined {
+  const visit = (items: Note[], category?: Note): Note | undefined => {
+    for (const item of items) {
+      const currentCategory = item.kind === 'category' ? item : category
+      if (item.id === noteId) return currentCategory
+      const found = visit(item.children ?? [], currentCategory)
+      if (found) return found
+    }
+    return undefined
+  }
+  return visit(notes)
+}
+
 export const bookTemplates: BookTemplate[] = [
   { id: 'customer-meeting', title: 'Kundemøte', description: 'Agenda, notater og neste steg' },
   { id: 'project-plan', title: 'Prosjektplan', description: 'Mål, fremdrift og oppgaver' },
@@ -30,7 +76,7 @@ export const bookTemplates: BookTemplate[] = [
 ]
 
 const page = (id: string, title: string, contentHtml: string): Note => ({ id, title, kind: 'file', contentHtml })
-const section = (id: string, title: string, children: Note[]): Note => ({ id, title, kind: 'folder', children })
+const section = (id: string, title: string, children: Note[]): Note => ({ id, title, kind: 'category', children })
 
 export function createBookFromTemplate(templateId: BookTemplateId, seed = Date.now()): Note {
   const prefix = `${templateId}-${seed}`
