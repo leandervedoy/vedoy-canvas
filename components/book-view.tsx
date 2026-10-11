@@ -56,7 +56,7 @@ export function BookView({ notes, activeNote, currentUserId, userEmail, onSelect
   onNotify: (message: string) => void
 }) {
   const [query, setQuery] = useState('')
-  const [navigationOpen, setNavigationOpen] = useState(true)
+  const [navigationOpen, setNavigationOpen] = useState(false)
   const [navigationWidth, setNavigationWidth] = useState(432)
   const [isResizing, setIsResizing] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
