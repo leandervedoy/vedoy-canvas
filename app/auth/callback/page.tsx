@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const clientId = process.env.NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID
-const callbackUrl = 'https://vedoy-canvas.vercel.app/auth/callback'
+const callbackUrl = typeof window === 'undefined' ? '' : `${window.location.origin}/auth/callback`
 
 export default function AuthCallback() {
   const [message, setMessage] = useState('Fullfører innlogging…')
