@@ -19,7 +19,7 @@ const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((mo
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 const clientId = process.env.NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID
-const callbackUrl = 'https://vedoy-canvas.vercel.app/auth/callback'
+const callbackUrl = typeof window === 'undefined' ? '' : `${window.location.origin}/auth/callback`
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey, {
   auth: {
     storageKey: 'vedoy-canvas-auth-v2',
