@@ -9,8 +9,8 @@ export function compileVedoyScript(source: string): CompileResult {
     if (!line || line.startsWith('#')) return
     const start = /^when\s+([\w-]+)\s+clicked$/i.exec(line)
     if (start) { if (current) errors.push(`Line ${index + 1}: close the previous block with end`); current = start[1]; if (!identifier.test(current)) errors.push(`Line ${index + 1}: invalid element ID`); return }
-    if (line === 'end') { if (!current) errors.push(`Line ${index + 1}: unexpected end`); current = null; return }
-    if (!current) { errors.push(`Line ${index + 1}: expected when <id> clicked`); return }
+    if (line === '}') { if (!current) errors.push(`Line ${index + 1}: unexpected end`); current = null; return }
+    if (!current) { errors.push(`Line ${index + 1}: expected When(id.Clicked) {`); return }
     const command = /^(go|say|show|hide)\s+(.+)$/i.exec(line)
     if (!command) { errors.push(`Line ${index + 1}: unknown command`); return }
     const kind = command[1].toLowerCase() as Action['kind']
@@ -21,7 +21,7 @@ export function compileVedoyScript(source: string): CompileResult {
     if (kind === 'go' && !(value.startsWith('/') && !value.startsWith('//'))) { errors.push(`Line ${index + 1}: navigation must use an internal /path`); return }
     actions.push({ element: current, kind, value })
   })
-  if (current) errors.push('Missing end')
+  if (current) errors.push('Missing }')
   const javascript = errors.length ? '' : actions.map(a => {
     const target = JSON.stringify(a.element)
     const action = a.kind === 'go' ? `window.location.assign(${JSON.stringify(a.value)});` : a.kind === 'say' ? `window.alert(${JSON.stringify(a.value)});` : `document.getElementById(${JSON.stringify(a.value)})?.style.setProperty("display", "${a.kind === 'hide' ? 'none' : ''}");`
