@@ -5,6 +5,7 @@ export type Note = {
   title: string
   kind?: 'folder' | 'file'
   favorite?: boolean
+  urgent?: boolean
   content?: string
   contentHtml?: string
   snapshot?: CanvasSnapshot
