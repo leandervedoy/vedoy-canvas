@@ -37,8 +37,8 @@ const editorFiles = Object.keys(defaults) as Array<keyof SourceFiles>
 const storageKey = 'vedoy-canvas-code-project-v1'
 
 function renderDocument(files: SourceFiles) {
-  const body = files['index.html'].match(/<body[^>]*>([\\s\\S]*?)<\\/body>/i)?.[1] ?? files['index.html']
-  return `<!doctype html><html lang="no"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Canvas forhåndsvisning</title><style>${files['styles.css']}</style></head><body>${body}<script>${files['script.js']}<\\/script></body></html>`
+  const body = files['index.html'].match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? files['index.html']
+  return `<!doctype html><html lang="no"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Canvas forhåndsvisning</title><style>${files['styles.css']}</style></head><body>${body}<script>${files['script.js']}</script></body></html>`
 }
 
 export function CodeWorkspace() {
