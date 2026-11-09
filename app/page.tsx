@@ -9,7 +9,7 @@ import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { BookView } from '@/components/book-view'
 import { createBookFromTemplate, type BookTemplateId, type Note } from '@/lib/notebook'
 import { getLocalScene, saveLocalScene } from '@/lib/local-scene-store'
-import { ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, List, ListOrdered, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Table2, Trash2, Type, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, List, ListOrdered, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Table2, Trash2, Type, Undo2 } from 'lucide-react'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
   ssr: false,
@@ -130,7 +130,7 @@ const initialNotes: Note[] = [
   { id: 'inbox', title: 'Untitled note', kind: 'file' },
 ]
 
-function NoteTree({ notes, activeNote, expanded, onSelect, onToggle, onRename, onFavorite, onDelete, onDrop }: { notes: Note[]; activeNote: string; expanded: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void; onRename: (id: string) => void; onFavorite: (id: string) => void; onDelete: (id: string) => void; onDrop: (targetId: string, draggedId: string) => void }) {
+function NoteTree({ notes, activeNote, expanded, onSelect, onToggle, onRename, onFavorite, onUrgent, onDelete, onDrop }: { notes: Note[]; activeNote: string; expanded: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void; onRename: (id: string) => void; onFavorite: (id: string) => void; onUrgent: (id: string) => void; onDelete: (id: string) => void; onDrop: (targetId: string, draggedId: string) => void }) {
   return <div className="flex flex-col gap-0.5">{notes.map((note) => {
     const hasChildren = Boolean(note.children?.length)
     const isExpanded = expanded.includes(note.id)
@@ -141,10 +141,11 @@ function NoteTree({ notes, activeNote, expanded, onSelect, onToggle, onRename, o
         </button>
         <button onClick={() => onSelect(note.id)} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left text-xs font-medium"><StickyNote className="size-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{note.title}</span></button>
         <button onClick={() => onFavorite(note.id)} className={`flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-background ${note.favorite ? 'text-yellow-500' : 'text-muted-foreground opacity-0 group-hover:opacity-100'}`} aria-label={note.favorite ? `Fjern ${note.title} fra favoritter` : `Merk ${note.title} som favoritt`}><Star className="size-3" fill={note.favorite ? 'currentColor' : 'none'} /></button>
+        <button onClick={() => onUrgent(note.id)} className={`flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-background ${note.urgent ? 'text-red-600' : 'text-muted-foreground opacity-0 group-hover:opacity-100'}`} aria-label={note.urgent ? `Fjern viktig-markering fra ${note.title}` : `Marker ${note.title} som viktig`} title={note.urgent ? 'Viktig – fjern markering' : 'Marker som viktig'}><AlertTriangle className="size-3" fill={note.urgent ? 'currentColor' : 'none'} /></button>
         <button onClick={() => onRename(note.id)} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`Rediger navnet på ${note.title}`} title="Rediger navn"><Pencil className="size-3" /></button>
         <button onClick={() => onDelete(note.id)} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600" aria-label={`Slett ${note.title}`} title="Slett"><Trash2 className="size-3" /></button>
       </div>
-      {hasChildren && isExpanded && <div className="ml-4 border-l border-border/70 pl-2"><NoteTree notes={note.children ?? []} activeNote={activeNote} expanded={expanded} onSelect={onSelect} onToggle={onToggle} onRename={onRename} onFavorite={onFavorite} onDelete={onDelete} onDrop={onDrop} /></div>}
+      {hasChildren && isExpanded && <div className="ml-4 border-l border-border/70 pl-2"><NoteTree notes={note.children ?? []} activeNote={activeNote} expanded={expanded} onSelect={onSelect} onToggle={onToggle} onRename={onRename} onFavorite={onFavorite} onUrgent={onUrgent} onDelete={onDelete} onDrop={onDrop} /></div>}
     </div>
   })}</div>
 }
@@ -303,6 +304,7 @@ export default function Page() {
   }
 
   const toggleFavorite = (id: string) => setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, favorite: !note.favorite })))
+  const toggleUrgent = (id: string) => setNotes((current) => updateNoteTree(current, id, (note) => ({ ...note, urgent: !note.urgent })))
 
   const deleteNote = (id: string) => {
     const find = (items: Note[]): Note | undefined => {
@@ -868,7 +870,7 @@ export default function Page() {
     {notebookOpen && <aside className="absolute left-4 top-[4.75rem] z-10 flex max-h-[calc(100vh-6rem)] w-72 max-w-[calc(100vw-2rem)] flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 p-3 shadow-md backdrop-blur-md sm:left-6" aria-label="Notebook navigator">
       <div className="flex items-center justify-between px-2 pb-3"><div className="flex items-center gap-2"><NotebookTabs className="size-4 text-muted-foreground" /><span className="text-xs font-semibold">Notebook</span></div><button onClick={() => setAddMenuOpen((open) => !open)} className={`flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground ${addMenuOpen ? 'bg-muted text-foreground' : ''}`} aria-label="Legg til bok eller side" aria-expanded={addMenuOpen}><FilePlus2 className="size-4" /></button></div>
       {addMenuOpen && <div className="mb-2 rounded-lg border border-border/70 bg-background p-1.5 shadow-sm"><p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Legg til</p><button onClick={addBook} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><FolderPlus className="size-3.5" />Ny bok</button><button onClick={() => addPage()} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><FilePlus2 className="size-3.5" />Ny side</button><button onClick={addSubpage} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><StickyNote className="size-3.5" />Ny underfil</button><button onClick={addSubfolder} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted"><FolderPlus className="size-3.5" />Ny undermappe</button></div>}
-      <div className="border-t border-border/70 pt-2"><NoteTree notes={notes} activeNote={activeNote} expanded={expanded} onSelect={openNote} onToggle={toggleExpanded} onRename={beginRename} onFavorite={toggleFavorite} onDelete={deleteNote} onDrop={moveNote} /></div>
+      <div className="border-t border-border/70 pt-2"><NoteTree notes={notes} activeNote={activeNote} expanded={expanded} onSelect={openNote} onToggle={toggleExpanded} onRename={beginRename} onFavorite={toggleFavorite} onUrgent={toggleUrgent} onDelete={deleteNote} onDrop={moveNote} /></div>
     </aside>}
 
     {nameDialog && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 p-4 backdrop-blur-sm" onClick={() => { setNameDialog(null); setEditingNoteId(null) }}>
