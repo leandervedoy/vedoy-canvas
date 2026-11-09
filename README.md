@@ -1,59 +1,29 @@
 # Vedøy Canvas
 
-Et visuelt arbeidsområde for skisser, diagrammer og visuelle notater, bygget på Excalidraw.
+Vedøy Canvas is a browser-based code workspace for building small web pages. The editor works with a shared HTML, CSS and JavaScript project. The live preview can be opened or hidden while editing and updates as code changes.
 
-## Lokal bruk
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Åpne `http://localhost:3000`.
+Open http://localhost:3000.
 
-## Bygg
+## Editor
 
-```bash
-npm run build
-```
+- Edit `index.html`, `styles.css` and `script.js` in the file explorer.
+- See changes in the live preview panel; on narrow screens it opens as a full-screen preview window.
+- Draft code is saved to this browser's local storage. Use Ctrl+S / Cmd+S to save immediately.
+- Export a standalone HTML file or a ZIP scaffold for Next.js, React, React Native/Expo, Angular, Vue.js, or Vedøy Forge with VedoyScript.
 
-Produksjon: https://vedoy-canvas.vercel.app
+## Export notes
 
-## Status
+Web framework exports carry the authored HTML as markup and include the CSS and browser JavaScript as project assets or initialization code. React Native uses Expo WebView to preserve the web page on mobile.
 
-Canvaset har én samlet Vedøy-meny og støtter:
+The Vedøy Forge export includes the page as standard HTML plus a `.vdy` starter source. The current VedoyScript compiler supports functions, `Let` bindings and `Return` statements; it does not yet compile HTML, CSS or browser JavaScript. The export labels this boundary in its README instead of implying the web assets were compiled to VedoyScript.
 
-- utvalg, hånd, former, pil, linje, frihånd, tekst, bilde og viskelær
-- rammer, innebygd nettinnhold og laserpeker
-- angre/gjør om, zoom og Excalidraw sin høyreklikkmeny
-- bibliotek, import og eksport av `.excalidrawlib`
-- åpning og lagring av `.excalidraw`
-- eksport som SVG, PNG, TXT og PDF samt kopiering av PNG
-- DOCX-eksport for Word og kompatibel import i Google Docs og Proton Docs
-- lyst/mørkt tema og responsiv «Mer»-meny
-- separate canvases for each page, with books, subfolders and subfiles
-- rich text with headings, lists, checkboxes, links and embedded images
-- canvas previews inserted directly between paragraphs and reopened in Canvas view for editing
-- global search across page text, book titles and text elements inside canvases
-- reusable templates for customer meetings, project plans, idea books and weekly plans
-- per-book invitations and collaborative editing through Supabase Realtime
-- renaming, drag-and-drop reordering, favorites and deletion in the navigator
-- Vedøy Login og lagring av brukerens canvas i Supabase-tabellen `canvas_documents`
+## Current storage
 
-Gruppering, lagrekkefølge, justering, duplisering og «legg til i bibliotek» finnes i høyreklikkmenyen når elementer er valgt.
-
-## Backend
-
-Følgende offentlige miljøvariabler må finnes lokalt og i Vercel:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID=
-```
-
-`canvas_documents` må ha Row Level Security slik at en innlogget bruker bare kan lese og endre raden hvor `user_id = auth.uid()`. Kjør også migrasjonen i `supabase/migrations` for `canvas_books` og `canvas_book_members`; den aktiverer RLS, eier-/medlemspolicyer og Realtime for delte bøker. Aldri legg en Supabase service-role-nøkkel i klienten.
-
-## Avgrensning
-
-Samarbeid synkroniserer hele boken og bruker «siste lagring vinner». Det er ikke tegn-for-tegn-samskriving med konfliktfletting. Bilder under 2 MB lagres som en del av bokdataene; større mediebibliotek bør senere flyttes til en privat Supabase Storage-bucket.
+The editor draft remains in local browser storage. Cloud sync, Git integration, language services and deployment are not part of this editor change.
