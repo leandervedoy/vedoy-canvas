@@ -42,19 +42,7 @@ ${body}
 }
 
 function readme(framework: string, command: string) {
-  return `# Vedøy Canvas export — ${framework}
-
-Generated from a Vedøy Canvas project.
-
-## Run
-
-```bash
-npm install
-${command}
-```
-
-Edit the generated source files in your framework. The original page content is preserved from Canvas; framework-specific behavior may need adapting when the source JavaScript uses browser-only APIs.
-`
+  return '# Vedøy Canvas export — ' + framework + '\n\nGenerated from a Vedøy Canvas project.\n\nRun `npm install`, then `' + command + '`. Edit the generated framework files to continue building.'
 }
 
 export function createExportBundle(target: Target, source: SourceFiles): ExportBundle {
@@ -148,7 +136,7 @@ createApp(App).mount('#app')
       name,
       readme: readme('Angular', 'npm start'),
       files: [
-        { path: 'package.json', content: JSON.stringify({ name, version: '1.0.0', scripts: { start: 'ng serve', build: 'ng build' }, dependencies: { '@angular/common': '^20.0.0', '@angular/compiler': '^20.0.0', '@angular/core': '^20.0.0', '@angular/platform-browser': '^20.0.0', rxjs: '~7.8.0', tslib: '^2.8.0', 'zone.js': '~0.15.0' }, devDependencies: { '@angular/cli': '^20.0.0', '@angular/compiler-cli': '^20.0.0', typescript: '~5.8.0' } }, null, 2) },
+        { path: 'package.json', content: JSON.stringify({ name, version: '1.0.0', scripts: { start: 'ng serve', build: 'ng build' }, dependencies: { '@angular/common': '^20.0.0', '@angular/compiler': '^20.0.0', '@angular/core': '^20.0.0', '@angular/platform-browser': '^20.0.0', rxjs: '~7.8.0', tslib: '^2.8.0', 'zone.js': '~0.15.0' }, devDependencies: { '@angular/cli': '^20.0.0', '@angular/build': '^20.0.0', '@angular/compiler-cli': '^20.0.0', typescript: '~5.8.0' } }, null, 2) },
         { path: 'angular.json', content: JSON.stringify({ '$schema': './node_modules/@angular/cli/lib/config/schema.json', version: 1, projects: { [name]: { projectType: 'application', root: '', sourceRoot: 'src', architect: { build: { builder: '@angular/build:application', options: { browser: 'src/main.ts', index: 'src/index.html', styles: ['src/styles.css'], tsConfig: 'tsconfig.app.json' } }, serve: { builder: '@angular/build:dev-server', options: { buildTarget: `${name}:build` } } } } } }, null, 2) },
         { path: 'src/index.html', content: '<!doctype html><html lang="no"><head><meta charset="utf-8"><title>Canvas export</title><base href="/"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><app-root></app-root></body></html>' },
         { path: 'src/main.ts', content: `import { bootstrapApplication } from '@angular/platform-browser'
