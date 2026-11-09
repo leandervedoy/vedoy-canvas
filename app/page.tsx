@@ -1,1 +1,7 @@
-'use client'\nimport './editor.css'\nimport { CodeWorkspace } from '@/components/code-workspace'\n\nexport default function Page() {\n  return <CodeWorkspace />\n}\n
+'use client'
+import './editor.css'
+import { CodeWorkspace } from '@/components/code-workspace'
+
+export default function Page() {
+  return <CodeWorkspace />
+}

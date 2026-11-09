@@ -37,5 +37,5 @@ export function createZip(files: ExportFile[]) {
   }
   const centralBytes = join(central)
   const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralBytes.length), ...u32(offset), ...u16(0)])
-  return new Blob([join([...local, centralBytes, end])], { type: 'application/zip' })
+  return new Blob([join([...local, centralBytes, end]) as BlobPart], { type: 'application/zip' })
 }

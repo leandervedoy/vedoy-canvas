@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Code2, Download, Eye, FileCode2, FolderOpen, Monitor, PanelRightClose, PanelRightOpen, Plus, Save, Smartphone, X } from 'lucide-react'
+import { Code2, Download, Eye, FileCode2, FolderOpen, Monitor, PanelRightClose, PanelRightOpen, Save, Smartphone, X } from 'lucide-react'
 import { createExportBundle, targets, type SourceFiles, type Target } from '@/lib/project-export'
 import { createZip } from '@/lib/zip'
 
