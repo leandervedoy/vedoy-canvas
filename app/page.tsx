@@ -172,6 +172,7 @@ export default function Page() {
   const [authReady, setAuthReady] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
   const [syncState, setSyncState] = useState<'waiting' | 'loading' | 'saved' | 'error'>('waiting')
+  const [realtimeState, setRealtimeState] = useState<'offline' | 'connecting' | 'connected' | 'error'>('offline')
   const [initialSnapshot, setInitialSnapshot] = useState<CanvasSnapshot | null | undefined>(undefined)
   const [notebookOpen, setNotebookOpen] = useState(false)
   const [moreToolsOpen, setMoreToolsOpen] = useState(false)
@@ -477,6 +478,7 @@ export default function Page() {
       const workspaceSnapshot: WorkspaceSnapshot = { ...snapshot, vedoyNotebook: updatedNotes }
       const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
+      if (error) notify('Kunne ikke lagre i skyen. Lokal kopi er beholdt.')
     }, 800)
   }, [user, activeNote])
 
@@ -492,6 +494,7 @@ export default function Page() {
       const workspaceSnapshot: WorkspaceSnapshot = { ...canvas, vedoyNotebook: notes }
       const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
+      if (error) notify('Kunne ikke lagre notatboken i skyen. Lokal kopi er beholdt.')
     }, 1000)
     return () => { if (notebookSaveTimer.current) clearTimeout(notebookSaveTimer.current) }
   }, [initialSnapshot, notes, user])
@@ -511,27 +514,80 @@ export default function Page() {
         if (book.ownerId && book.ownerId !== user.id) return supabase.from('canvas_books').update(payload).eq('id', book.id)
         return supabase.from('canvas_books').upsert({ id: book.id, owner_id: user.id, ...payload }, { onConflict: 'id' })
       }))
-      setSyncState(results.some((result) => result.error) ? 'error' : 'saved')
+      const hasError = results.some((result) => result.error)
+      setSyncState(hasError ? 'error' : 'saved')
+      if (hasError) notify('Noen bokendringer ble ikke lagret. Prøv igjen når tilkoblingen er tilbake.')
     }, 1200)
     return () => { if (bookSaveTimer.current) clearTimeout(bookSaveTimer.current) }
   }, [initialSnapshot, notes, user])
 
   useEffect(() => {
-    if (!user || !supabase) return
-    const channel = supabase.channel(`canvas-books-${user.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_books' }, (payload) => {
-      const next = payload.new as CloudBookRow | undefined
-      const previous = payload.old as Partial<CloudBookRow> | undefined
+    if (!user || !supabase) {
+      setRealtimeState('offline')
+      return
+    }
+
+    setRealtimeState('connecting')
+
+    const refreshAccessibleBooks = async () => {
+      const { data, error } = await supabase
+        .from('canvas_books')
+        .select('id, owner_id, title, data, updated_at')
+        .order('updated_at', { ascending: true })
+
+      if (error || !data) {
+        setRealtimeState('error')
+        return
+      }
+
       skipNextBookSave.current = true
       setNotes((current) => {
-        if (payload.eventType === 'DELETE' && previous?.id) return current.filter((note) => note.id !== previous.id)
-        if (!next?.id || !next.data) return current
-        const updated = cloudBook(next, user.id)
-        const index = current.findIndex((note) => note.id === next.id)
-        if (index === -1) return [...current, updated]
-        return current.map((note) => note.id === next.id ? updated : note)
+        const loosePages = current.filter((note) => note.kind === 'file' && !note.children)
+        return [...(data as CloudBookRow[]).map((book) => cloudBook(book, user.id)), ...loosePages]
       })
-    }).subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    }
+
+    const channel = supabase
+      .channel(`canvas-realtime-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_books' }, (payload) => {
+        const next = payload.new as CloudBookRow | undefined
+        const previous = payload.old as Partial<CloudBookRow> | undefined
+        skipNextBookSave.current = true
+        setNotes((current) => {
+          if (payload.eventType === 'DELETE' && previous?.id) return current.filter((note) => note.id !== previous.id)
+          if (!next?.id || !next.data) return current
+          const updated = cloudBook(next, user.id)
+          const index = current.findIndex((note) => note.id === next.id)
+          if (index === -1) return [...current, updated]
+          return current.map((note) => note.id === next.id ? updated : note)
+        })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_book_members' }, () => {
+        void refreshAccessibleBooks()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_documents', filter: `user_id=eq.${user.id}` }, () => {
+        setSyncState((current) => current === 'loading' ? current : 'saved')
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setRealtimeState('connected')
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeState('error')
+        else if (status === 'CLOSED') setRealtimeState('offline')
+        else setRealtimeState('connecting')
+      })
+
+    const handleOnline = () => {
+      setRealtimeState('connecting')
+      void refreshAccessibleBooks()
+    }
+    const handleOffline = () => setRealtimeState('offline')
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      void supabase.removeChannel(channel)
+    }
   }, [user])
 
   const exportCanvas = async (format: ExportFormat = 'svg') => {
@@ -781,7 +837,11 @@ export default function Page() {
       {viewMode === 'canvas' && <button onClick={() => { void openVedoyGraphics() }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne grafikkbibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Grafikk</span></button>}
       <button onClick={() => { setActionsOpen((open) => !open); setMoreToolsOpen(false); setNotebookOpen(false) }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Fil og eksport"><Download className="size-4" /><span className="hidden xl:inline">Fil</span><ChevronDown className="size-3" /></button>
       {authReady && (user ? <>
-        <span className="hidden max-w-36 truncate text-[11px] text-muted-foreground md:inline">{syncState === 'loading' ? 'Lagrer…' : syncState === 'error' ? 'Lagringsfeil' : 'Lagret'}</span>
+        <span className="hidden max-w-44 truncate text-[11px] text-muted-foreground md:inline">
+          {syncState === 'loading' ? 'Lagrer…' : syncState === 'error' ? 'Lagringsfeil' : 'Lagret'}
+          {' · '}
+          {realtimeState === 'connected' ? 'Live' : realtimeState === 'connecting' ? 'Kobler til…' : realtimeState === 'error' ? 'Realtime-feil' : 'Frakoblet'}
+        </span>
         <button onClick={signOut} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted" aria-label="Logg ut"><LogOut className="size-4" /></button>
       </> : <button onClick={startLogin} disabled={!clientId} className="flex size-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-medium text-primary-foreground disabled:opacity-50 sm:h-auto sm:w-auto sm:px-3 sm:py-2" aria-label="Logg inn"><LogIn className="size-3.5" /><span className="hidden sm:inline">Logg inn</span></button>)}
     </header>
