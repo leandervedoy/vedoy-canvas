@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Vedøy Canvas',
-  description: 'Uendelig lerret. Full struktur.',
+  title: 'Vedøy Infinite Canvas',
+  description: 'Think. Plan. Design. Create. Document. Build. One canvas. Infinite possibilities.',
   generator: 'v0.app',
   icons: { icon: '/icon.png' },
 }
