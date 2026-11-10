@@ -85,7 +85,7 @@ function DecisionWorkspace({ user }: { user: User }) {
     if (!supabase || !form || !form.title.trim()) { setNotice('Gi ideen et navn før du lagrer.'); return }
     setBusy(true)
     const payload = { ...form, title: form.title.trim(), updated_at: new Date().toISOString() }
-    const result = active && editor
+    const result = active
       ? await supabase.from('canvas_decision_projects').update(payload).eq('id', active.id).eq('owner_id', user.id).select().single()
       : await supabase.from('canvas_decision_projects').insert({ ...payload, owner_id: user.id }).select().single()
     if (result.error) setNotice('Lagring feilet: ' + result.error.message)
