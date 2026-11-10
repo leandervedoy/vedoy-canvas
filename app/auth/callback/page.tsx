@@ -34,7 +34,9 @@ export default function AuthCallback() {
       if (error) throw error
       sessionStorage.removeItem('vedoy_login_verifier')
       sessionStorage.removeItem('vedoy_login_state')
-      window.location.replace('/')
+      const returnTo = sessionStorage.getItem('vedoy_login_return_to') || '/'
+      sessionStorage.removeItem('vedoy_login_return_to')
+      window.location.replace(returnTo.startsWith('/') ? returnTo : '/')
     }
     finish().catch((error) => setMessage(error instanceof Error ? error.message : 'Innloggingen feilet.'))
   }, [])
