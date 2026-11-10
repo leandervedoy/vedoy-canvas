@@ -22,7 +22,7 @@ test('break-even correctly handles zero or negative contribution', () => {
 })
 
 test('warnings surface unvalidated, unprofitable high-effort ideas', () => {
-  const warnings = priorityAdvice({ ...DEFAULT_DECISION, energy: 5, confidence: 10, build_hours: 80, validation_note: '' })
+  const warnings = priorityAdvice({ ...DEFAULT_DECISION, energy: 5, confidence: 10, build_hours: 80, customers_base: 0, validation_note: '' })
   assert.equal(warnings.length, 5)
 })
 
