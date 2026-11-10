@@ -7,6 +7,7 @@ import { createClient, type User } from '@supabase/supabase-js'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { BookView } from '@/components/book-view'
+import { InternalCanvasGate } from '@/components/internal-canvas-gate'
 import { createBookFromTemplate, type BookTemplateId, type Note } from '@/lib/notebook'
 import { getLocalScene, saveLocalScene } from '@/lib/local-scene-store'
 import { ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, List, ListOrdered, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Table2, Trash2, Type, Undo2 } from 'lucide-react'
@@ -166,7 +167,7 @@ async function startLogin() {
   window.location.assign(url.toString())
 }
 
-export default function Page() {
+function CanvasWorkspace() {
   const [viewMode, setViewMode] = useState<'canvas' | 'book'>('canvas')
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -760,6 +761,7 @@ export default function Page() {
         <Image src="/vedoy-canvas-logo.png" alt="Vedøy Canvas" width={1600} height={465} className="h-6 w-auto object-contain dark:brightness-125" priority />
       </span>
       <div className="h-5 w-px shrink-0 bg-border" />
+      <a href="/decision" className="flex shrink-0 items-center rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-2 text-[11px] font-semibold text-foreground hover:bg-primary/20" aria-label="Åpne Decision Engine">Decision Engine</a>
       <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
         <button type="button" onClick={() => changeView('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
         <button type="button" onClick={() => changeView('book')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'book' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Bok" aria-pressed={viewMode === 'book'}><BookOpen className="size-3.5" /><span className="hidden sm:inline">Bok</span></button>
@@ -824,4 +826,9 @@ export default function Page() {
     {toast && <div className="absolute bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background shadow-lg">{toast}</div>}
     {helpOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm" onClick={() => setHelpOpen(false)}><section className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Snarveier og hjelp</h2><button onClick={() => setHelpOpen(false)} className="rounded-lg px-3 py-1 text-sm hover:bg-muted">Lukk</button></div><div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2"><p><kbd>1</kbd> Velg</p><p><kbd>H</kbd> Flytt</p><p><kbd>R</kbd> Rektangel</p><p><kbd>O</kbd> Sirkel</p><p><kbd>A</kbd> Pil</p><p><kbd>P</kbd> Tegn</p><p><kbd>T</kbd> Tekst</p><p><kbd>Ctrl/Cmd + Z</kbd> Angre</p><p><kbd>Ctrl/Cmd + G</kbd> Grupper</p><p><kbd>Ctrl/Cmd + Shift + G</kbd> Løs opp</p></div><p className="mt-4 text-xs leading-5 text-muted-foreground">Høyreklikk på valgte elementer for lagrekkefølge, gruppering, justering, duplisering og å legge utvalget i biblioteket.</p></section></div>}
   </main>
+}
+
+
+export default function Page() {
+  return <InternalCanvasGate>{() => <CanvasWorkspace />}</InternalCanvasGate>
 }
