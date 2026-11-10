@@ -71,14 +71,15 @@ grant select on table public.vedoy_library_items to anon;
 grant select, insert, update, delete on table public.vedoy_library_items to authenticated;
 
 drop policy if exists "Public can browse marketplace library items" on public.vedoy_library_items;
-create policy "Public can browse marketplace library items"
-on public.vedoy_library_items for select to anon, authenticated
+drop policy if exists "Owners can read library items" on public.vedoy_library_items;
+
+create policy "Anonymous can browse public marketplace items"
+on public.vedoy_library_items for select to anon
 using (visibility = 'public');
 
-drop policy if exists "Owners can read library items" on public.vedoy_library_items;
-create policy "Owners can read library items"
+create policy "Signed-in users can read own or public library items"
 on public.vedoy_library_items for select to authenticated
-using ((select auth.uid()) = owner_id);
+using ((select auth.uid()) = owner_id or visibility = 'public');
 
 drop policy if exists "Owners can create library items" on public.vedoy_library_items;
 create policy "Owners can create library items"
