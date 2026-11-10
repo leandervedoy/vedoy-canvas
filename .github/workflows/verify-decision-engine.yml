@@ -1,0 +1,32 @@
+name: Verify Infinite Canvas Decision Engine
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'tests/**'
+      - 'supabase/migrations/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/verify-decision-engine.yml'
+  push:
+    branches:
+      - 'feat/internal-decision-engine-20261110'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install frozen dependencies
+        run: npm ci
+      - name: Run deterministic calculator tests
+        run: node --experimental-strip-types --test tests/decision-engine.test.mjs
+      - name: Compile app
+        run: npm run build
