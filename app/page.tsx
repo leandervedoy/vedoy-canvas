@@ -7,11 +7,12 @@ import { createClient, type User } from '@supabase/supabase-js'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { BookView } from '@/components/book-view'
+import { CanvasAiPanel } from '@/components/canvas-ai-panel'
 import { InternalCanvasGate } from '@/components/internal-canvas-gate'
 import { MyLibraryPanel, type VedoyLibraryItem } from '@/components/my-library-panel'
 import { createBookFromTemplate, type BookTemplateId, type Note } from '@/lib/notebook'
 import { getLocalScene, saveLocalScene } from '@/lib/local-scene-store'
-import { AlertTriangle, ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, List, ListOrdered, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Table2, Trash2, Type, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, List, ListOrdered, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Sparkles, Square, Star, StickyNote, Sun, Table2, Trash2, Type, Undo2 } from 'lucide-react'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas-editor').then((module) => module.CanvasEditor), {
   ssr: false,
@@ -188,6 +189,8 @@ function CanvasWorkspace() {
   const [toast, setToast] = useState<string | null>(null)
   const [libraryItems, setLibraryItems] = useState<readonly unknown[]>([])
   const [myLibraryOpen, setMyLibraryOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiInitialText, setAiInitialText] = useState('')
   const [vedoyLibraryItems, setVedoyLibraryItems] = useState<VedoyLibraryItem[]>([])
   const [marketplaceItems, setMarketplaceItems] = useState<VedoyLibraryItem[]>([])
   const [projectId, setProjectId] = useState<string | null>(null)
@@ -932,6 +935,21 @@ function CanvasWorkspace() {
     setSyncState('waiting')
   }
 
+  const getAiAccessToken = useCallback(async () => {
+    if (!supabase) return null
+    const { data } = await supabase.auth.getSession()
+    return data.session?.access_token ?? null
+  }, [])
+
+  const openCanvasAi = () => {
+    const api = editorApi.current
+    const selected = api?.getAppState().selectedElementIds ?? {}
+    const selectionText = api?.getSceneElements().filter((element) => selected[element.id] && element.type === 'text')
+      .map((element) => ('text' in element && typeof element.text === 'string' ? element.text : '')).join('\n') ?? ''
+    setAiInitialText(selectionText.slice(0, 6000))
+    setAiOpen(true)
+  }
+
   return <main className="relative min-h-screen overflow-hidden bg-background text-foreground"><style jsx global>{`.excalidraw .App-menu_top__left, .excalidraw .App-menu_top__right, .excalidraw .App-toolbar-container { display: none !important; }`}</style>
     <div className={`absolute inset-0 ${viewMode === 'canvas' ? 'block' : 'hidden'}`} aria-hidden={viewMode !== 'canvas'}>
       {initialSnapshot !== undefined && <CanvasEditor key={`${user?.id ?? 'anonymous'}-excalidraw-v1`} initialSnapshot={initialSnapshot} darkMode={darkMode} onApi={(api) => { editorApi.current = api }} onSceneChange={saveScene} onLibraryChange={setLibraryItems} onOpenBook={(bookId) => { void openNote(bookId); changeView('book') }} />}
@@ -947,6 +965,7 @@ function CanvasWorkspace() {
       </span>
       <div className="h-5 w-px shrink-0 bg-border" />
       <a href="/decision" className="flex shrink-0 items-center rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-2 text-[11px] font-semibold text-foreground hover:bg-primary/20" aria-label="Åpne Decision Engine">Decision Engine</a>
+       <button type="button" onClick={openCanvasAi} className="flex shrink-0 items-center gap-1 rounded-lg border border-violet-500/25 bg-violet-500/10 px-2.5 py-2 text-[11px] font-semibold text-foreground hover:bg-violet-500/20" aria-label="Åpne Canvas AI"><Sparkles className="size-3.5" /><span className="hidden sm:inline">AI</span></button>
       <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
         <button type="button" onClick={() => changeView('canvas')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'canvas' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Canvas" aria-pressed={viewMode === 'canvas'}><Brush className="size-3.5" /><span className="hidden sm:inline">Canvas</span></button>
         <button type="button" onClick={() => changeView('book')} className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium ${viewMode === 'book' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} aria-label="Bok" aria-pressed={viewMode === 'book'}><BookOpen className="size-3.5" /><span className="hidden sm:inline">Bok</span></button>
@@ -977,7 +996,8 @@ function CanvasWorkspace() {
       </> : <button onClick={startLogin} disabled={!clientId} className="flex size-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-medium text-primary-foreground disabled:opacity-50 sm:h-auto sm:w-auto sm:px-3 sm:py-2" aria-label="Logg inn"><LogIn className="size-3.5" /><span className="hidden sm:inline">Logg inn</span></button>)}
     </header>
 
-    <MyLibraryPanel open={myLibraryOpen} items={vedoyLibraryItems} marketplaceItems={marketplaceItems} projectName={projectName} onClose={() => setMyLibraryOpen(false)} onUse={(item) => { void useVedoyLibraryItem(item) }} onPublish={(item) => { void publishVedoyLibraryItem(item) }} onAddFromMarketplace={(item) => { void addMarketplaceItem(item) }} />
+    {aiOpen && <CanvasAiPanel getAccessToken={getAiAccessToken} initialText={aiInitialText} onClose={() => setAiOpen(false)} />}
+     <MyLibraryPanel open={myLibraryOpen} items={vedoyLibraryItems} marketplaceItems={marketplaceItems} projectName={projectName} onClose={() => setMyLibraryOpen(false)} onUse={(item) => { void useVedoyLibraryItem(item) }} onPublish={(item) => { void publishVedoyLibraryItem(item) }} onAddFromMarketplace={(item) => { void addMarketplaceItem(item) }} />
 
     <input ref={sceneInput} type="file" className="hidden" accept=".excalidraw,application/json" onChange={(event) => { void openSceneFile(event.target.files?.[0]); event.target.value = '' }} />
     <input ref={libraryInput} type="file" className="hidden" accept=".excalidrawlib,application/json" onChange={(event) => { void importLibrary(event.target.files?.[0]); event.target.value = '' }} />
