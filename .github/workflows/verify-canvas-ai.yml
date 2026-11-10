@@ -1,0 +1,27 @@
+name: Verify Canvas AI
+on:
+  pull_request:
+    paths:
+      - 'app/api/ai/**'
+      - 'components/canvas-ai-panel.tsx'
+      - 'lib/canvas-ai-*.ts'
+      - 'app/page.tsx'
+      - 'tests/canvas-ai-pricing.test.mjs'
+      - '.github/workflows/verify-canvas-ai.yml'
+  push:
+    branches:
+      - feat/openai-coins-model-selector
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: node --experimental-strip-types --test tests/canvas-ai-pricing.test.mjs
