@@ -1,6 +1,8 @@
-# Vedøy Canvas
+# Vedøy Infinite Canvas
 
-Et visuelt arbeidsområde for skisser, diagrammer og visuelle notater, bygget på Excalidraw.
+**Think. Plan. Design. Create. Document. Build. One canvas. Infinite possibilities. ✨**
+
+Vedøy Infinite Canvas is a shared workspace for documentation, books, infinite whiteboards, reusable components and development workflows.
 
 ## Lokal bruk
 
@@ -57,3 +59,26 @@ NEXT_PUBLIC_VEDOY_LOGIN_CLIENT_ID=
 ## Avgrensning
 
 Samarbeid synkroniserer hele boken og bruker «siste lagring vinner». Det er ikke tegn-for-tegn-samskriving med konfliktfletting. Bilder under 2 MB lagres som en del av bokdataene; større mediebibliotek bør senere flyttes til en privat Supabase Storage-bucket.
+
+
+## Platform direction
+
+Vedøy Infinite Canvas is designed as a standalone product that also plugs into the wider Vedøy developer platform.
+
+- **Vedoy ID**: one account across Vedøy services.
+- **Developer Projects**: open Canvas with `?project=<developer_project_uuid>` to use a project-scoped workspace.
+- **My Library**: reusable components and assets stored at account level.
+- **Vedoy Marketplace**: public My Library assets can be discovered and copied into a personal library. Paid Vedoy Coin installs are intentionally not enabled yet.
+- **Forge**: planned build/runtime integration for turning Canvas structures into working projects.
+- **VedoyScript + Polyglot**: planned language/runtime layer for mixed frontend/backend project execution.
+
+Project-scoped workspaces reuse `developer_projects`; Canvas does not create a parallel project registry.
+
+## Current limitations / next phase
+
+- Realtime collaboration still uses whole-book last-write-wins rather than CRDT/character-level merge.
+- My Library currently supports Canvas/Excalidraw component packs first; other asset kinds need dedicated import/use adapters.
+- Marketplace publishing is available for free public assets. Paid installs need a reviewed Vedoy Coins transaction flow, entitlement ledger and refund rules before activation.
+- Forge, VedoyScript and Polyglot are platform integrations, not yet a complete runtime inside Canvas.
+- Large media should move from JSON payloads to private Supabase Storage.
+- `app/page.tsx` remains large and should be split into workspace, sync, library, navigation and project modules before the next major feature wave.
