@@ -7,6 +7,7 @@ import { createClient, type User } from '@supabase/supabase-js'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { CanvasSnapshot } from '@/components/canvas-editor'
 import { BookView } from '@/components/book-view'
+import { MyLibraryPanel, type VedoyLibraryItem } from '@/components/my-library-panel'
 import { createBookFromTemplate, type BookTemplateId, type Note } from '@/lib/notebook'
 import { getLocalScene, saveLocalScene } from '@/lib/local-scene-store'
 import { AlertTriangle, ArrowRight, BookOpen, Brush, ChevronDown, ChevronRight, Circle, Clipboard, Diamond, Download, Eraser, ExternalLink, FileDown, FilePlus2, FileText, FileType2, FileUp, FolderPlus, Frame, Hand, HelpCircle, Image as ImageIcon, LibraryBig, List, ListOrdered, LogIn, LogOut, Menu, Minus, Moon, MousePointer2, NotebookTabs, Pencil, Presentation, Redo2, Save, Square, Star, StickyNote, Sun, Table2, Trash2, Type, Undo2 } from 'lucide-react'
@@ -77,6 +78,7 @@ type WorkspaceSnapshot = CanvasSnapshot & { vedoyNotebook?: Note[] }
 type CloudBookRow = {
   id: string
   owner_id: string
+  project_id: string | null
   title: string
   data: Note
   updated_at: string
@@ -162,6 +164,7 @@ async function startLogin() {
   const state = encodeBase64Url(crypto.getRandomValues(new Uint8Array(24)))
   sessionStorage.setItem('vedoy_login_verifier', verifier)
   sessionStorage.setItem('vedoy_login_state', state)
+  sessionStorage.setItem('vedoy_login_return_to', `${window.location.pathname}${window.location.search}`)
   const url = new URL('/auth/v1/oauth/authorize', supabaseUrl)
   url.search = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: callbackUrl, state, code_challenge: challenge, code_challenge_method: 'S256', scope: 'openid email profile' }).toString()
   window.location.assign(url.toString())
@@ -183,6 +186,11 @@ export default function Page() {
   const [bookPickerOpen, setBookPickerOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [libraryItems, setLibraryItems] = useState<readonly unknown[]>([])
+  const [myLibraryOpen, setMyLibraryOpen] = useState(false)
+  const [vedoyLibraryItems, setVedoyLibraryItems] = useState<VedoyLibraryItem[]>([])
+  const [marketplaceItems, setMarketplaceItems] = useState<VedoyLibraryItem[]>([])
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [projectName, setProjectName] = useState<string | null>(null)
   const [activeTool, setActiveTool] = useState<DrawingTool>('selection')
   const [notes, setNotes] = useState(initialNotes)
   const [activeNote, setActiveNote] = useState('canvas')
@@ -373,6 +381,11 @@ export default function Page() {
   }
 
   useEffect(() => {
+    const candidate = new URL(window.location.href).searchParams.get('project')
+    setProjectId(candidate && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(candidate) ? candidate : null)
+  }, [])
+
+  useEffect(() => {
     if (!supabase) { setAuthReady(true); return }
     // Never hold the canvas behind a slow or stale auth session. Authentication
     // enhances persistence, but the drawing surface must always start instantly.
@@ -427,10 +440,16 @@ export default function Page() {
 
       setInitialSnapshot(undefined)
       setSyncState('loading')
-      const [documentResult, booksResult] = await Promise.all([
-        supabase.from('canvas_documents').select('snapshot').eq('user_id', user.id).maybeSingle(),
-        supabase.from('canvas_books').select('id, owner_id, title, data, updated_at').order('updated_at', { ascending: true }),
-      ])
+      const documentRequest = projectId
+        ? supabase.from('canvas_project_workspaces').select('snapshot').eq('project_id', projectId).maybeSingle()
+        : supabase.from('canvas_documents').select('snapshot').eq('user_id', user.id).maybeSingle()
+      const booksBase = supabase.from('canvas_books').select('id, owner_id, project_id, title, data, updated_at').order('updated_at', { ascending: true })
+      const booksRequest = projectId ? booksBase.eq('project_id', projectId) : booksBase.is('project_id', null)
+      const projectRequest = projectId
+        ? supabase.from('developer_projects').select('id, name').eq('id', projectId).maybeSingle()
+        : Promise.resolve({ data: null, error: null })
+      const [documentResult, booksResult, projectResult] = await Promise.all([documentRequest, booksRequest, projectRequest])
+      setProjectName(projectResult.data?.name ?? null)
       if (cancelled) return
       if (documentResult.error) {
         setInitialSnapshot(null)
@@ -455,7 +474,7 @@ export default function Page() {
       cancelled = true
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
-  }, [authReady, user])
+  }, [authReady, user, projectId])
 
   const saveScene = useCallback((snapshot: CanvasSnapshot) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -478,11 +497,13 @@ export default function Page() {
       }
       setSyncState('loading')
       const workspaceSnapshot: WorkspaceSnapshot = { ...snapshot, vedoyNotebook: updatedNotes }
-      const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      const { error } = projectId
+        ? await supabase.from('canvas_project_workspaces').upsert({ project_id: projectId, owner_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'project_id' })
+        : await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
       if (error) notify('Kunne ikke lagre i skyen. Lokal kopi er beholdt.')
     }, 800)
-  }, [user, activeNote])
+  }, [user, activeNote, projectId])
 
   useEffect(() => {
     if (!user || !supabase || initialSnapshot === undefined) return
@@ -494,12 +515,14 @@ export default function Page() {
       const { serializeAsJSON } = await import('@excalidraw/excalidraw')
       const canvas = JSON.parse(serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'database')) as CanvasSnapshot
       const workspaceSnapshot: WorkspaceSnapshot = { ...canvas, vedoyNotebook: notes }
-      const { error } = await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      const { error } = projectId
+        ? await supabase.from('canvas_project_workspaces').upsert({ project_id: projectId, owner_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'project_id' })
+        : await supabase.from('canvas_documents').upsert({ user_id: user.id, snapshot: workspaceSnapshot, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       setSyncState(error ? 'error' : 'saved')
       if (error) notify('Kunne ikke lagre notatboken i skyen. Lokal kopi er beholdt.')
     }, 1000)
     return () => { if (notebookSaveTimer.current) clearTimeout(notebookSaveTimer.current) }
-  }, [initialSnapshot, notes, user])
+  }, [initialSnapshot, notes, user, projectId])
 
   useEffect(() => {
     if (!user || !supabase || initialSnapshot === undefined) return
@@ -512,7 +535,7 @@ export default function Page() {
       const books = notes.filter((note) => note.kind === 'folder' || note.children)
       const results = await Promise.all(books.map((book) => {
         const data = withoutAccessMetadata(book)
-        const payload = { title: book.title, data, updated_at: new Date().toISOString() }
+        const payload = { title: book.title, data, project_id: projectId, updated_at: new Date().toISOString() }
         if (book.ownerId && book.ownerId !== user.id) return supabase.from('canvas_books').update(payload).eq('id', book.id)
         return supabase.from('canvas_books').upsert({ id: book.id, owner_id: user.id, ...payload }, { onConflict: 'id' })
       }))
@@ -521,7 +544,7 @@ export default function Page() {
       if (hasError) notify('Noen bokendringer ble ikke lagret. Prøv igjen når tilkoblingen er tilbake.')
     }, 1200)
     return () => { if (bookSaveTimer.current) clearTimeout(bookSaveTimer.current) }
-  }, [initialSnapshot, notes, user])
+  }, [initialSnapshot, notes, user, projectId])
 
   useEffect(() => {
     if (!user || !supabase) {
@@ -532,10 +555,11 @@ export default function Page() {
     setRealtimeState('connecting')
 
     const refreshAccessibleBooks = async () => {
-      const { data, error } = await supabase
+      const base = supabase
         .from('canvas_books')
-        .select('id, owner_id, title, data, updated_at')
+        .select('id, owner_id, project_id, title, data, updated_at')
         .order('updated_at', { ascending: true })
+      const { data, error } = projectId ? await base.eq('project_id', projectId) : await base.is('project_id', null)
 
       if (error || !data) {
         setRealtimeState('error')
@@ -550,10 +574,11 @@ export default function Page() {
     }
 
     const channel = supabase
-      .channel(`canvas-realtime-${user.id}`)
+      .channel(`canvas-realtime-${user.id}-${projectId ?? 'personal'}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_books' }, (payload) => {
         const next = payload.new as CloudBookRow | undefined
         const previous = payload.old as Partial<CloudBookRow> | undefined
+        if (next?.project_id !== projectId) return
         skipNextBookSave.current = true
         setNotes((current) => {
           if (payload.eventType === 'DELETE' && previous?.id) return current.filter((note) => note.id !== previous.id)
@@ -567,15 +592,23 @@ export default function Page() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_book_members' }, () => {
         void refreshAccessibleBooks()
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_documents', filter: `user_id=eq.${user.id}` }, () => {
+
+    if (projectId) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_project_workspaces', filter: `project_id=eq.${projectId}` }, () => {
         setSyncState((current) => current === 'loading' ? current : 'saved')
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setRealtimeState('connected')
-        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeState('error')
-        else if (status === 'CLOSED') setRealtimeState('offline')
-        else setRealtimeState('connecting')
+    } else {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_documents', filter: `user_id=eq.${user.id}` }, () => {
+        setSyncState((current) => current === 'loading' ? current : 'saved')
       })
+    }
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') setRealtimeState('connected')
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeState('error')
+      else if (status === 'CLOSED') setRealtimeState('offline')
+      else setRealtimeState('connecting')
+    })
 
     const handleOnline = () => {
       setRealtimeState('connecting')
@@ -590,7 +623,100 @@ export default function Page() {
       window.removeEventListener('offline', handleOffline)
       void supabase.removeChannel(channel)
     }
-  }, [user])
+  }, [user, projectId])
+
+
+  const loadVedoyLibrary = async () => {
+    if (!supabase) return
+    const marketplaceRequest = supabase
+      .from('vedoy_library_items')
+      .select('*')
+      .eq('visibility', 'public')
+      .order('updated_at', { ascending: false })
+      .limit(40)
+
+    const [marketplaceResult, ownResult] = await Promise.all([
+      marketplaceRequest,
+      user
+        ? supabase.from('vedoy_library_items').select('*').eq('owner_id', user.id).order('updated_at', { ascending: false }).limit(100)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    if (!marketplaceResult.error) setMarketplaceItems((marketplaceResult.data ?? []) as VedoyLibraryItem[])
+    if (!ownResult.error) setVedoyLibraryItems((ownResult.data ?? []) as VedoyLibraryItem[])
+  }
+
+  const openMyLibrary = () => {
+    setMyLibraryOpen(true)
+    setActionsOpen(false)
+    setMoreToolsOpen(false)
+    void loadVedoyLibrary()
+  }
+
+  const saveCurrentLibraryToVedoy = async () => {
+    if (!user || !supabase) { notify('Logg inn for å lagre i My Library'); return }
+    if (!libraryItems.length) { notify('Excalidraw-biblioteket er tomt'); return }
+    const { error } = await supabase.from('vedoy_library_items').upsert({
+      owner_id: user.id,
+      source_key: 'canvas:excalidraw-library',
+      name: 'My Canvas Components',
+      description: 'Reusable components saved from Vedøy Infinite Canvas.',
+      kind: 'component-pack',
+      visibility: 'personal',
+      content: { excalidrawItems: libraryItems },
+      compatibility: ['Vedøy Infinite Canvas', 'Excalidraw'],
+      tags: ['canvas', 'components'],
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'owner_id,source_key' })
+    if (error) { notify('Kunne ikke lagre My Library'); return }
+    notify('Komponentene er lagret i My Library')
+    void loadVedoyLibrary()
+  }
+
+  const useVedoyLibraryItem = async (item: VedoyLibraryItem) => {
+    const graphics = item.content?.excalidrawItems
+    if (!Array.isArray(graphics) || !editorApi.current) {
+      notify('Denne asset-typen kan ikke settes inn på canvas ennå')
+      return
+    }
+    await editorApi.current.updateLibrary({ libraryItems: graphics as never, merge: true, openLibraryMenu: true })
+    notify(`«${item.name}» lagt til i Canvas-biblioteket`)
+    setMyLibraryOpen(false)
+  }
+
+  const publishVedoyLibraryItem = async (item: VedoyLibraryItem) => {
+    if (!user || !supabase || item.owner_id !== user.id) return
+    const { error } = await supabase.from('vedoy_library_items').update({
+      visibility: 'public',
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', item.id).eq('owner_id', user.id)
+    if (error) { notify('Publisering til Marketplace feilet'); return }
+    notify('Publisert gratis i Vedoy Marketplace')
+    void loadVedoyLibrary()
+  }
+
+  const addMarketplaceItem = async (item: VedoyLibraryItem) => {
+    if (!user || !supabase) { notify('Logg inn for å bruke Marketplace'); return }
+    if (item.price_coins > 0) { notify('Betalte Marketplace-installasjoner kommer i neste fase'); return }
+    const { error } = await supabase.from('vedoy_library_items').upsert({
+      owner_id: user.id,
+      source_key: `marketplace:${item.id}:v${item.version}`,
+      name: item.name,
+      description: item.description,
+      kind: item.kind,
+      visibility: 'personal',
+      content: item.content,
+      compatibility: item.compatibility,
+      tags: item.tags,
+      version: item.version,
+      price_coins: 0,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'owner_id,source_key' })
+    if (error) { notify('Kunne ikke legge til asset'); return }
+    notify('Asset lagt til i My Library')
+    void loadVedoyLibrary()
+  }
 
   const exportCanvas = async (format: ExportFormat = 'svg') => {
     const api = editorApi.current
@@ -666,7 +792,7 @@ export default function Page() {
     if (!user || !supabase) return 'Logg inn for å dele bøker'
     const book = notes.find((note) => note.id === bookId)
     if (!book || (book.ownerId && book.ownerId !== user.id)) return 'Bare eieren kan invitere til denne boken'
-    const bookResult = await supabase.from('canvas_books').upsert({ id: book.id, owner_id: user.id, title: book.title, data: withoutAccessMetadata(book), updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    const bookResult = await supabase.from('canvas_books').upsert({ id: book.id, owner_id: user.id, project_id: projectId, title: book.title, data: withoutAccessMetadata(book), updated_at: new Date().toISOString() }, { onConflict: 'id' })
     if (bookResult.error) return `Deling feilet: ${bookResult.error.message}`
     const { error } = await supabase.from('canvas_book_members').upsert({ book_id: book.id, owner_id: user.id, invitee_email: email, role: 'editor' }, { onConflict: 'book_id,invitee_email' })
     return error ? `Delingen feilet: ${error.message}` : `Tilgang gitt til ${email}`
@@ -814,8 +940,9 @@ export default function Page() {
     <header className="absolute inset-x-4 top-4 z-10 flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/95 px-2.5 py-2.5 shadow-md backdrop-blur-md sm:inset-x-6 sm:gap-2 sm:px-3">
       <button onClick={() => { setNotebookOpen((open) => !open); setMoreToolsOpen(false) }} className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${notebookOpen ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label={notebookOpen ? 'Close notebook' : 'Open notebook'} aria-expanded={notebookOpen}><Menu className="size-[18px]" /></button>
       <div className="h-5 w-px bg-border" />
-      <span className="hidden h-7 w-28 shrink-0 items-center sm:flex" aria-label="Vedøy Canvas">
-        <Image src="/vedoy-canvas-logo.png" alt="Vedøy Canvas" width={1600} height={465} className="h-6 w-auto object-contain dark:brightness-125" priority />
+      <span className="hidden min-w-0 shrink-0 items-center gap-2 sm:flex" aria-label="Vedøy Infinite Canvas">
+        <Image src="/vedoy-canvas-logo.png" alt="Vedøy Infinite Canvas" width={1600} height={465} className="h-6 w-24 object-contain object-left dark:brightness-125" priority />
+        <span className="hidden text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground xl:inline">Infinite Canvas</span>
       </span>
       <div className="h-5 w-px shrink-0 bg-border" />
       <div className="flex shrink-0 rounded-lg bg-muted p-0.5" aria-label="Velg visning">
@@ -836,7 +963,7 @@ export default function Page() {
       <button type="button" onClick={() => historyShortcut(true)} className="hidden size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:flex" aria-label="Gjør om" title="Gjør om"><Redo2 className="size-4" /></button></>}
       <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
       <button onClick={() => setDarkMode((value) => !value)} className="hidden size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted sm:flex" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
-      {viewMode === 'canvas' && <button onClick={() => { void openVedoyGraphics() }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne grafikkbibliotek"><BookOpen className="size-4" /><span className="hidden xl:inline">Grafikk</span></button>}
+      {viewMode === 'canvas' && <button onClick={openMyLibrary} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Åpne My Library"><LibraryBig className="size-4" /><span className="hidden xl:inline">My Library</span></button>}
       <button onClick={() => { setActionsOpen((open) => !open); setMoreToolsOpen(false); setNotebookOpen(false) }} className="hidden items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:flex" aria-label="Fil og eksport"><Download className="size-4" /><span className="hidden xl:inline">Fil</span><ChevronDown className="size-3" /></button>
       {authReady && (user ? <>
         <span className="hidden max-w-44 truncate text-[11px] text-muted-foreground md:inline">
@@ -848,11 +975,14 @@ export default function Page() {
       </> : <button onClick={startLogin} disabled={!clientId} className="flex size-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-medium text-primary-foreground disabled:opacity-50 sm:h-auto sm:w-auto sm:px-3 sm:py-2" aria-label="Logg inn"><LogIn className="size-3.5" /><span className="hidden sm:inline">Logg inn</span></button>)}
     </header>
 
+    <MyLibraryPanel open={myLibraryOpen} items={vedoyLibraryItems} marketplaceItems={marketplaceItems} projectName={projectName} onClose={() => setMyLibraryOpen(false)} onUse={(item) => { void useVedoyLibraryItem(item) }} onPublish={(item) => { void publishVedoyLibraryItem(item) }} onAddFromMarketplace={(item) => { void addMarketplaceItem(item) }} />
+
     <input ref={sceneInput} type="file" className="hidden" accept=".excalidraw,application/json" onChange={(event) => { void openSceneFile(event.target.files?.[0]); event.target.value = '' }} />
     <input ref={libraryInput} type="file" className="hidden" accept=".excalidrawlib,application/json" onChange={(event) => { void importLibrary(event.target.files?.[0]); event.target.value = '' }} />
 
     {actionsOpen && <div className="absolute right-4 top-[4.75rem] z-30 max-h-[calc(100vh-6rem)] w-64 overflow-y-auto rounded-xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur-md sm:right-6">
       <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Fil</div>
+      <button type="button" onClick={() => { void saveCurrentLibraryToVedoy(); setActionsOpen(false) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><LibraryBig className="size-4" />Lagre komponenter i My Library</button>
       {fileActions.map(({ icon: Icon, label, action }) => <button key={label} type="button" onClick={() => { action(); setActionsOpen(false) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><Icon className="size-4" />{label}</button>)}
     </div>}
 
