@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Code2, Download, Eye, FileCode2, FolderOpen, Monitor, PanelRightClose, PanelRightOpen, Save, Smartphone, X } from 'lucide-react'
 import { createExportBundle, targets, type SourceFiles, type Target } from '@/lib/project-export'
 import { createZip } from '@/lib/zip'
+import { allowedForgeOrigins, FORGE_CHANNEL, FORGE_PROTOCOL_VERSION, isForgeProjectRequest } from '@/lib/forge-bridge'
 
 const defaults: SourceFiles = {
   'index.html': `<!doctype html>
@@ -49,6 +50,8 @@ export function CodeWorkspace() {
   const [saved, setSaved] = useState(false)
   const [lineScroll, setLineScroll] = useState(0)
   const editorRef = useRef<HTMLTextAreaElement>(null)
+  const filesRef = useRef(files)
+  filesRef.current = files
 
   useEffect(() => {
     try {
@@ -69,6 +72,24 @@ export function CodeWorkspace() {
     }, 400)
     return () => window.clearTimeout(timer)
   }, [files])
+
+  // Forge can import only after a button click from its parent, and only if its
+  // exact origin is allowlisted. Never broadcast projects to arbitrary iframes.
+  useEffect(() => {
+    if (window.parent === window) return
+    const allowed = allowedForgeOrigins(process.env.NEXT_PUBLIC_FORGE_ORIGINS)
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent || !allowed.has(event.origin) || !isForgeProjectRequest(event.data)) return
+      window.parent.postMessage({
+        channel: FORGE_CHANNEL,
+        version: FORGE_PROTOCOL_VERSION,
+        type: 'project',
+        files: filesRef.current,
+      }, event.origin)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
   const preview = useMemo(() => renderDocument(files), [files])
   const updateFile = (value: string) => setFiles((current) => ({ ...current, [activeFile]: value }))
