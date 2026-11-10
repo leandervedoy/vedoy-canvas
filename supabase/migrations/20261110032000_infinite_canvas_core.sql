@@ -133,3 +133,58 @@ begin
   alter publication supabase_realtime add table public.vedoy_library_items;
 exception when duplicate_object then null;
 end $$;
+
+
+-- Keep project assignment owner-scoped when books are created or updated.
+drop policy if exists "Owners can create books" on public.canvas_books;
+create policy "Owners can create books"
+on public.canvas_books for insert to authenticated
+with check (
+  (select auth.uid()) = owner_id
+  and (
+    project_id is null
+    or exists (
+      select 1 from public.developer_projects p
+      where p.id = canvas_books.project_id
+        and p.owner_id = (select auth.uid())
+    )
+  )
+);
+
+drop policy if exists "Owners and editors can update books" on public.canvas_books;
+create policy "Owners and editors can update books"
+on public.canvas_books for update to authenticated
+using (
+  (select auth.uid()) = owner_id
+  or exists (
+    select 1 from public.canvas_book_members member
+    where member.book_id = canvas_books.id
+      and member.role = 'editor'
+      and (
+        member.user_id = (select auth.uid())
+        or lower(member.invitee_email) = lower(coalesce((select auth.jwt() ->> 'email'), ''))
+      )
+  )
+)
+with check (
+  (
+    (select auth.uid()) = owner_id
+    or exists (
+      select 1 from public.canvas_book_members member
+      where member.book_id = canvas_books.id
+        and member.role = 'editor'
+        and (
+          member.user_id = (select auth.uid())
+          or lower(member.invitee_email) = lower(coalesce((select auth.jwt() ->> 'email'), ''))
+        )
+    )
+  )
+  and (
+    project_id is null
+    or exists (
+      select 1 from public.developer_projects p
+      where p.id = canvas_books.project_id
+        and p.owner_id = canvas_books.owner_id
+    )
+  )
+);
