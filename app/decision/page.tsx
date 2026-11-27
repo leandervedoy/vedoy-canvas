@@ -145,7 +145,7 @@ function DecisionWorkspace({ user }: { user: User }) {
   return <main className="min-h-screen bg-[#0b1018] px-4 py-5 text-white sm:px-7 lg:px-10">
     <div className="mx-auto max-w-7xl">
       <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div><Link href="/" className="mb-3 inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white"><ArrowLeft className="size-4"/> Tilbake til Canvas</Link>
+        <div><Link href="/canvas/internal" className="mb-3 inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white"><ArrowLeft className="size-4"/> Tilbake til Canvas</Link>
           <div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-[#777df5]/20"><Sparkles className="size-6 text-[#b4b7ff]"/></span>
             <div><h1 className="text-xl font-bold tracking-tight sm:text-2xl">Vedoy Infinite Canvas</h1><p className="text-xs text-slate-400">Decision Engine · One Canvas. Infinite Possibilities.</p></div></div>
         </div>

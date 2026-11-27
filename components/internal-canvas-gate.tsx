@@ -27,6 +27,7 @@ async function startLogin() {
   const state = encode(crypto.getRandomValues(new Uint8Array(24)))
   sessionStorage.setItem('vedoy_login_verifier', verifier)
   sessionStorage.setItem('vedoy_login_state', state)
+  sessionStorage.setItem('vedoy_login_return_to', location.pathname + location.search)
   const endpoint = new URL('/auth/v1/oauth/authorize', url)
   endpoint.search = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: location.origin + '/auth/callback', state, code_challenge: encode(new Uint8Array(digest)), code_challenge_method: 'S256', scope: 'openid email profile' }).toString()
   location.assign(endpoint.toString())
