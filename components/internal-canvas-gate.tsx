@@ -31,6 +31,25 @@ async function startLogin() {
   endpoint.search = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: location.origin + '/auth/callback', state, code_challenge: encode(new Uint8Array(digest)), code_challenge_method: 'S256', scope: 'openid email profile' }).toString()
   location.assign(endpoint.toString())
 }
+function PilotForm() {
+  const [tested, setTested] = useState(false)
+  return <form onSubmit={event => { event.preventDefault(); setTested(true); event.currentTarget.reset() }} className="rounded-2xl bg-[#f9fbf5] p-6 text-[#203127]">
+    <h3 className="text-xl font-semibold">Meld interesse</h3>
+    <p className="mt-2 text-sm leading-6 text-[#607267]">Forhåndsvisning: Påmelding er ikke åpnet ennå. Ikke skriv inn ekte personopplysninger.</p>
+    <label className="mt-4 block text-sm font-semibold" htmlFor="pilot-name">Navn</label>
+    <input id="pilot-name" name="name" required minLength={2} maxLength={100} autoComplete="off" className="mt-1 w-full rounded-xl border border-[#c8d6c5] bg-white px-4 py-3" />
+    <label className="mt-4 block text-sm font-semibold" htmlFor="pilot-company">Bedrift (valgfritt)</label>
+    <input id="pilot-company" name="company" maxLength={120} autoComplete="off" className="mt-1 w-full rounded-xl border border-[#c8d6c5] bg-white px-4 py-3" />
+    <label className="mt-4 block text-sm font-semibold" htmlFor="pilot-email">E-post</label>
+    <input id="pilot-email" name="email" type="email" required maxLength={254} autoComplete="off" className="mt-1 w-full rounded-xl border border-[#c8d6c5] bg-white px-4 py-3" />
+    <label className="mt-4 block text-sm font-semibold" htmlFor="pilot-message">Hva trenger dere bedre oversikt over? (valgfritt)</label>
+    <textarea id="pilot-message" name="message" rows={3} maxLength={1000} className="mt-1 w-full rounded-xl border border-[#c8d6c5] bg-white px-4 py-3" />
+    <button type="submit" className="mt-5 w-full rounded-xl bg-[#254334] px-5 py-3 font-semibold text-white hover:bg-[#385b42]">Test påmeldingen</button>
+    <p className="mt-3 text-xs leading-5 text-[#607267]">Demonstrasjon: Ingen opplysninger sendes eller lagres, og du blir ikke påmeldt.</p>
+    {tested && <p role="status" className="mt-3 rounded-xl bg-[#e5efdc] p-3 text-sm text-[#38583d]">Demonstrasjonen fungerer. Ingen opplysninger er sendt eller lagret.</p>}
+  </form>
+}
+
 export function InternalCanvasGate({ children }: { children: (user: User) => React.ReactNode }) {
   const [state, setState] = useState<'loading' | 'denied' | 'login' | 'allowed'>('loading')
   const [user, setUser] = useState<User | null>(null)
@@ -62,7 +81,7 @@ export function InternalCanvasGate({ children }: { children: (user: User) => Rea
           <p className="inline-flex items-center gap-2 rounded-full border border-[#cfddc7] bg-[#ebf2df] px-3 py-1.5 text-xs font-semibold uppercase tracking-[.14em] text-[#4c694a]"><Sparkles className="size-3.5" /> Mer oversikt. Mer rom for idéer.</p>
           <h1 className="mt-7 max-w-xl text-5xl font-semibold leading-[1.06] tracking-[-.055em] sm:text-6xl">Alt du tenker på.<br/><span className="text-[#789d60]">Ett sted å skape.</span></h1>
           <p className="mt-6 max-w-lg text-lg leading-8 text-[#607267]">Samle idéer, dokumentasjon og prosjekter i et arbeidsområde som gjør det enklere å finne frem – og komme videre.</p>
-          <div className="mt-8 flex flex-wrap gap-3"><a href="#tilgang" className="inline-flex items-center gap-3 rounded-full bg-[#254334] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#385b42]">Åpne Canvas <ArrowRight className="size-4" /></a><a href="#muligheter" className="rounded-full border border-[#c2d0bf] px-6 py-3.5 text-sm font-semibold hover:bg-white">Se mulighetene</a></div>
+          <div className="mt-8 flex flex-wrap gap-3"><a href="#pilot" className="inline-flex items-center gap-3 rounded-full bg-[#254334] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#385b42]">Se pilotpåmelding <ArrowRight className="size-4" /></a><a href="#muligheter" className="rounded-full border border-[#c2d0bf] px-6 py-3.5 text-sm font-semibold hover:bg-white">Se mulighetene</a></div>
           <p className="mt-5 text-xs text-[#798b7a]">Tilgang er foreløpig forbeholdt interne medlemmer.</p>
         </div>
         <div aria-hidden="true" className="relative min-h-[390px] rounded-[2rem] border border-white bg-[#dce8d4] p-4 shadow-[0_30px_80px_-40px_rgba(44,77,49,.5)] sm:p-7">
@@ -84,6 +103,16 @@ export function InternalCanvasGate({ children }: { children: (user: User) => Rea
           <article className="rounded-3xl border border-[#e0e9dc] bg-white p-7"><BookOpen className="size-7 text-[#719b63]"/><h3 className="mt-6 text-xl font-semibold">Samle kunnskap</h3><p className="mt-3 text-sm leading-6 text-[#708174]">Organiser dokumenter og notater i bøker som gjør informasjon lettere å finne.</p></article>
           <article className="rounded-3xl border border-[#e0e9dc] bg-white p-7"><Boxes className="size-7 text-[#719b63]"/><h3 className="mt-6 text-xl font-semibold">Skap videre</h3><p className="mt-3 text-sm leading-6 text-[#708174]">Vi utforsker verktøy for å bygge nettsider, webapper og interaktive opplevelser i samme arbeidsområde.</p><p className="mt-4 text-xs font-semibold text-[#789b68]">Planlagt videreutvikling</p></article>
         </div>
+      </section>
+      <section id="pilot" className="mb-10 grid gap-8 rounded-[2rem] bg-[#203c2e] p-8 text-white md:grid-cols-2 md:p-12">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#b4d69e]">For småbedrifter</p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Vær med og form Canvas.</h2>
+          <p className="mt-4 max-w-md leading-7 text-[#c5d7c4]">Vi ønsker å forstå hvordan små bedrifter kan få bedre oversikt over prosjekter, rutiner og idéer. Her kan du se hvordan en fremtidig pilotpåmelding kan fungere.</p>
+          <ul className="mt-5 list-disc space-y-2 pl-5 text-sm leading-6 text-[#d0dfcf]"><li>Samle idéer og prosjektarbeid</li><li>Gjør kunnskap lettere å finne</li><li>Del innspill til videre utvikling</li></ul>
+          <p className="mt-5 text-sm leading-6 text-[#c5d7c4]">Påmelding er ikke åpnet. Tidspunkt og vilkår for piloten er ikke fastsatt. Arbeidsflaten er foreløpig kun tilgjengelig for interne medlemmer.</p>
+        </div>
+        <PilotForm />
       </section>
       <section id="tilgang" className="mb-16 grid gap-8 rounded-[2rem] bg-[#203c2e] p-8 text-white md:grid-cols-2 md:items-center md:p-12">
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#b4d69e]">Klar for mer oversikt?</p><h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Gi idéene dine et hjem.</h2><p className="mt-4 max-w-md leading-7 text-[#c5d7c4]">Canvas er under utvikling og tilgjengelig for interne medlemmer med Vedøy ID.</p></div>
